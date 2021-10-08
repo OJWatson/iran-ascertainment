@@ -61,7 +61,7 @@ deaths <- readRDS("deaths.rds")
 deaths <- deaths[deaths$province == province, ]
 deaths <- deaths[, c("date","deaths")]
 rownames(deaths) <- NULL
-deaths <- deaths[deaths$date < as.Date("2021-05-01"), ] # pre delta & vaccination
+deaths <- deaths[deaths$date < date, ] # pre delta & vaccination
 
 ## -----------------------------------------------------------------------------
 ## 2. Fit Model
