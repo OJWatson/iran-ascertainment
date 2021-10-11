@@ -31,4 +31,4 @@ hosp_beds <- hosp_beds %>% mutate(
 
 # save these
 saveRDS(hosp_beds, cp_path("analysis/data/derived/hosp_beds.rds"))
-saveRDS(hosp_beds, cp_path("src/prov_fit/icu_beds.rds"))
+saveRDS(hosp_beds, cp_path("src/prov_fit/hosp_beds.rds"))

@@ -2,7 +2,7 @@ library(tidyverse)
 
 # get age data
 df <- read.csv(cp_path("analysis/data/raw/iran_deaths_province.csv"))
-df$year <- df$year - 1398 + 2019
+df$year_nm <- df$year - 1398 + 2019
 add_zero <- function(x){
   if(nchar(x) == 1) {
     x <- paste0("0", x)
@@ -12,12 +12,51 @@ add_zero <- function(x){
   return(x)
 }
 df$week_num <- vapply(df$week_num, add_zero, character(1))
-df$date <- as.Date(paste0(df$year, df$week_num, 1), "%Y%W%w")
+df$date <- as.Date(paste0(df$year_nm, df$week_num, 1), "%Y%W%w")
+df$date <- df$date + (as.Date("2020-03-20") - df$date[df$year == 1399 & df$week_num == "01"][1])
 df <- mutate(df, province_name = replace(province_name, which(province_name == "Kohgiluyeh and Boyer Ahmad"),"Kohgiluyeh and Boyer-Ahmad"))
 df <- mutate(df, province_name = replace(province_name, which(province_name == "Chahaar Mahal and Bakhtiari"),"Chahar Mahaal and Bakhtiari"))
 saveRDS(df, cp_path("analysis/data/derived/iran_deaths_province.rds"))
 
 # format for fitting to
+prov_df <- df %>%
+  arrange(date) %>%
+  group_by(province_name) %>%
+  mutate(deaths_sm = zoo::rollapply(pos(excess_deaths_mean), 4, mean, partial = TRUE)) %>%
+  select(date, deaths_sm, province_name, excess_deaths_mean) %>%
+  rename(deaths = deaths_sm) %>%
+  mutate(deaths = as.integer(deaths)) %>%
+  rename(province = province_name) %>%
+  mutate(deaths = replace_na(deaths, 0))
+
+# check looks right
+prov_df %>%
+  ggplot(aes(date, deaths)) + geom_line() +
+  #geom_point(aes(y = excess_deaths_mean)) +
+  facet_wrap(~province, scales = "free_y")
+
+# then save for fitting
+saveRDS(prov_df, cp_path("src/prov_fit/deaths.rds"))
+
+
+
+
+
+
+
+## TO DELETE
+## --------------------------------v
+pos <- function(x) {x[x<0] <- 0; x}
+
+deaths %>%
+  arrange(date) %>%
+  group_by(province_name) %>%
+  mutate(deaths_sm = zoo::rollmean(pos(excess_deaths_mean), 4, na.pad = TRUE)) %>%
+ggplot(aes(date, deaths_sm)) +
+  geom_line() +
+  facet_wrap(~province_name, scales = "free_y")
+
+
 interp_cumu_deaths <- function(dated_df, k = 80) {
 
   df <- data.frame(x = seq(nrow(dated_df)), y = cumsum(dated_df$excess_deaths_mean))
@@ -78,41 +117,27 @@ k <- rep(13, length(unique(deaths$province_name)))
 k <- set_names(k, sort(unique(deaths$province_name)))
 k[c("Gilan", "Kerman", "Markazi")] <- 15
 k["Qom"] <- 20
+set.seed(123)
 for(i in sort(unique(deaths$province_name))) {
 
-    death_df <- deaths[deaths$province_name == i, ]
-    death_df <- death_df[, c("date","excess_deaths_mean")]
-    death_df <- death_df[death_df$date >= as.Date("2019-12-08"), ]
-    # poor baseline impacts spline and we know there were infections prior to August from sero
-    if(i == "Sistan and Baluchistan") {
-      death_df$excess_deaths_mean[death_df$date < as.Date("2020-03-17")] <- 0
-    }
-    death_df_new <- interp_cum_deaths(death_df, k = k[i])
-    death_df$province <- i
-    death_df$deaths_interp <- death_df_new$deaths
-    prov_dfs[[i]] <- death_df
+  death_df <- deaths[deaths$province_name == i, ]
+  death_df <- death_df[, c("date","excess_deaths_mean")]
+  death_df <- death_df[death_df$date >= as.Date("2019-11-08"), ]
+  # poor baseline impacts spline and we know there were infections prior to August from sero
+  if(i == "Sistan and Baluchistan") {
+    death_df$excess_deaths_mean[death_df$date < as.Date("2020-03-17")] <- 0
+  } else {
+    death_df$excess_deaths_mean[death_df$date < as.Date("2019-12-28")] <- 0
+  }
+  death_df_new <- interp_cum_deaths(death_df, k = k[i])
+  death_df$province <- i
+  death_df$deaths_interp <- death_df_new$deaths
+  prov_dfs[[i]] <- death_df
 
 }
 prov_df <- do.call(rbind, prov_dfs)
 
-# check looks right
-group_by(prov_df, province) %>% mutate(obs = (excess_deaths_mean), pred = (deaths_interp)) %>%
-  ggplot(aes(date, obs)) + geom_point(alpha = 0.2) + geom_line(aes(y=pred)) +
-  facet_wrap(~province, scales = "free_y")
 
-# then save for fitting
-deaths_for_fitting <- prov_df %>% select(date, deaths_interp, province) %>%
-  rename(deaths = deaths_interp) %>%
-  mutate(deaths = as.integer(deaths))
-saveRDS(deaths_for_fitting, cp_path("src/prov_fit/deaths.rds"))
-
-
-
-
-
-
-## TO DELETE
-## --------------------------------
 
 df2 <- left_join(df, demog)
 
