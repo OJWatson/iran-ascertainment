@@ -266,6 +266,8 @@ cdp_plot <- function(res) {
 
 dp_plot <- function(res) {
 
+  res$pmcmc_results$inputs$data$deaths <- as.integer(res$pmcmc_results$inputs$data$deaths/7)
+
   suppressWarnings(
     dp <- plot(res, particle_fit = TRUE) +
       theme_bw() +
