@@ -163,7 +163,8 @@ obj$submit(grp$ids[to_rerun])
 paths <- gsub("raw", "derived", tasks)
 
 # now extract the fitting.pdf files
-td <- tempdir()
+td <- file.path(tempdir(), "pdfs")
+dir.create(td, showWarnings = FALSE)
 fits <- lapply(paths, function(x) {
   if(file.exists(x)){
     zip::unzip(
