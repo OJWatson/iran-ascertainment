@@ -525,8 +525,7 @@ run_deterministic_comparison_iran <- function(data, squire_model, model_params, 
   index <- squire:::odin_index(model_func)
 
   # get deaths for comparison
-  Ds <- diff(rowSums(out[, index$D]))
-  Ds <- Ds[data$day_end[-1]]
+  Ds <- diff(rowSums(out[c(data$day_end[2]-7, data$day_end[-1]), index$D]))
   Ds[Ds < 0] <- 0
   deaths <- data$deaths[-1]
 
