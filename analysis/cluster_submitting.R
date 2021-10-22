@@ -97,7 +97,7 @@ ctx <- context::context_save(
   path = context_name,
   package_sources = conan::conan_sources(
     packages = c(
-      "vimc/orderly", "mrc-ide/squire@v0.6.9", "mrc-ide/nimue",
+      "vimc/orderly", "mrc-ide/squire@v0.6.10", "mrc-ide/nimue",
       c('tinytex','knitr', 'tidyr', 'ggplot2', 'ggrepel', 'magrittr', 'dplyr', 'here', "lubridate", "rmarkdown",
         'stringdist','plotly', 'rvest', 'xml2', 'ggforce', 'countrycode', 'cowplot', 'RhpcBLASctl', 'nimue')
     ),
@@ -110,7 +110,7 @@ config$resource$parallel <- "FALSE"
 config$resource$type <- "Cores"
 
 # Configure the Queue
-obj <- didehpc::queue_didehpc(ctx, config = config)
+obj <- didehpc::queue_didehpc(ctx, config = config, provision = "lazy")
 
 ## ------------------------------------
 ## 3. Submit the jobs
@@ -128,7 +128,7 @@ tasks <- as.character(vapply(tasks, "[[", character(1), "path"))
 split_path <- function(x) if (dirname(x)==x) x else c(basename(x),split_path(dirname(x)))
 bundle_name <- paste0(tail(rev(split_path(workdir)), 2), collapse = "_")
 grp <- obj$lapply(tasks, orderly::orderly_bundle_run, workdir = workdir,
-                  name = bundle_name)
+                  name = bundle_name, overwrite = TRUE)
 
 ## ------------------------------------
 ## 4. Check on our jobs
@@ -163,7 +163,7 @@ obj$submit(grp$ids[to_rerun])
 paths <- gsub("raw", "derived", tasks)
 
 # now extract the fitting.pdf files
-td <- file.path(tempdir(), "pdfs")
+td <- file.path(tempdir(), "pdfs3")
 dir.create(td, showWarnings = FALSE)
 fits <- lapply(paths, function(x) {
   if(file.exists(x)){

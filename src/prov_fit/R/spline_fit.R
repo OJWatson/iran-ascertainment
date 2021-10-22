@@ -467,6 +467,11 @@ iran_log_likelihood <- function(pars, data, squire_model, model_params, pars_obs
 }
 
 
+ll_pois <- function (data, model, phi, k, exp_noise) {
+  mu <- phi * model + rexp(length(model), rate = exp_noise)
+  dpois(data, lambda = mu, log = TRUE)
+}
+
 
 run_deterministic_comparison_iran <- function(data, squire_model, model_params, model_start_date = "2020-02-02",
                                                obs_params = list(
@@ -533,11 +538,11 @@ run_deterministic_comparison_iran <- function(data, squire_model, model_params, 
   if (obs_params$treated_deaths_only) {
     Ds_heathcare <- diff(rowSums(out[, index$D_get]))
     Ds_heathcare <- Ds_heathcare[data$day_end[-1]]
-    ll <- squire:::ll_nbinom(deaths, Ds_heathcare, obs_params$phi_death,
+    ll <- ll_pois(deaths, Ds_heathcare, obs_params$phi_death,
                              obs_params$k_death, obs_params$exp_noise)
   }
   else {
-    ll <- squire:::ll_nbinom(deaths, Ds, obs_params$phi_death, obs_params$k_death,
+    ll <- ll_pois(deaths, Ds, obs_params$phi_death, obs_params$k_death,
                              obs_params$exp_noise)
   }
 
