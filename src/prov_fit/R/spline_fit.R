@@ -54,7 +54,7 @@ fit_spline_rt <- function(data,
 
   # pmcmc args
   n_particles <- 2 # we use the deterministic model now so this does nothing (makes your life quicker and easier too)
-  n_chains <- 3 # number of chains
+  n_chains <- 1 # number of chains
   start_adaptation <- max(2, round(n_mcmc/10)) # how long before adapting
 
   # parallel call
@@ -195,6 +195,8 @@ fit_spline_rt <- function(data,
   ## Step 3: Run PMCMC
   ## -----------------------------------------------------------------------------
 
+  scaling_factor <- 1
+  if(FALSE) {
   pi <- readRDS("pars_init.rds")
   if(pars_obs$dur_R >= 180 && pars_obs$prob_hosp_multiplier == 1) {
     pi <- pi$optimistic
@@ -255,6 +257,7 @@ fit_spline_rt <- function(data,
 
     }
 
+  }
   }
 
   if (model == "SQUIRE") {
@@ -355,7 +358,6 @@ iran_log_likelihood <- function(pars, data, squire_model, model_params, pars_obs
   squire:::assert_in(c("R0", "start_date"), names(pars), message = "Must specify R0, start date to infer")
   R0 <- pars[["R0"]]
   start_date <- pars[["start_date"]]
-  pars_obs$phi_death <- pars[["rf"]]
   squire:::assert_pos(R0)
   squire:::assert_date(start_date)
   R0_change <- interventions$R0_change

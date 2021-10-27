@@ -99,11 +99,13 @@ rt_plot_immunity <- function(out) {
         Rt_args = out$pmcmc_results$inputs$Rt_args)
     }
 
+    Rt_full <- approx(x = tt$tt, Rt, method = "constant", xout = seq(tt$tt[1], tt$tt[length(tt$tt)]))$y
+
     df <- data.frame(
-      "Rt" = Rt,
-      "Reff" = Rt*tail(na.omit(ratios[[y]]),length(Rt)),
-      "R0" = na.omit(Rt)[1]*tail(na.omit(ratios[[y]]),length(Rt)),
-      "date" = tt$dates,
+      "Rt" = Rt_full,
+      "Reff" = Rt_full*tail(na.omit(ratios[[y]]),length(Rt_full)),
+      "R0" = na.omit(Rt_full)[1]*tail(na.omit(ratios[[y]]),length(Rt_full)),
+      "date" = seq.Date(tt$dates[1], tt$dates[length(tt$dates)], 1),
       rep = y,
       stringsAsFactors = FALSE)
     df$pos <- seq_len(nrow(df))
