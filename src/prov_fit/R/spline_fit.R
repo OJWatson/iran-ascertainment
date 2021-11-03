@@ -160,7 +160,7 @@ fit_spline_rt <- function(data,
   # MCMC Functions - Prior and Likelihood Calculation
   logprior <- function(pars){
     ret <- dunif(x = pars[["start_date"]], min = -55, max = -10, log = TRUE) +
-      dunif(x = pars[["R0"]], min = 1.5, max = 10, log = TRUE) +
+      dnorm(x = pars[["R0"]], mean = 3, sd = 0.25, log = TRUE) +
       dnorm(x = pars[["Meff"]], mean = 0, sd = 1, log = TRUE) +
       dunif(x = pars[["Meff_pl"]], min = 0, max = 1, log = TRUE) +
       dnorm(x = pars[["Rt_shift"]], mean = 0, sd = 1, log = TRUE) +
@@ -170,7 +170,7 @@ fit_spline_rt <- function(data,
     if(any(grepl("Rt_rw", names(pars)))) {
       Rt_rws <- pars[grepl("Rt_rw", names(pars))]
       for (i in seq_along(Rt_rws)) {
-        ret <- ret + dnorm(x = Rt_rws[[i]], mean = 0, sd = 0.2, log = TRUE)
+        ret <- ret + dnorm(x = Rt_rws[[i]], mean = 0, sd = 0.1, log = TRUE)
       }
     }
     return(ret)
@@ -196,7 +196,7 @@ fit_spline_rt <- function(data,
   ## -----------------------------------------------------------------------------
 
   scaling_factor <- 1
-  if(FALSE) {
+
   pi <- readRDS("pars_init.rds")
   if(pars_obs$dur_R >= 180 && pars_obs$prob_hosp_multiplier == 1) {
     pi <- pi$optimistic
@@ -258,7 +258,7 @@ fit_spline_rt <- function(data,
     }
 
   }
-  }
+
 
   if (model == "SQUIRE") {
     squire_model = squire:::deterministic_model()
@@ -496,6 +496,11 @@ run_deterministic_comparison_iran <- function(data, squire_model, model_params, 
   # set up as normal
   data <- squire:::particle_filter_data(data = data, start_date = model_start_date,
                                         steps_per_day = round(1/model_params$dt))
+  # correct for weekly deaths
+  data$day_end[nrow(data)] <- data$day_start[nrow(data)] + 7
+  data$step_end[nrow(data)] <- data$step_start[nrow(data)] + 7
+
+  # back to normal
   model_params$tt_beta <- round(model_params$tt_beta * model_params$dt)
   model_params$tt_contact_matrix <- round(model_params$tt_contact_matrix *
                                             model_params$dt)
@@ -528,7 +533,7 @@ run_deterministic_comparison_iran <- function(data, squire_model, model_params, 
   # run model
   model_func <- squire_model$odin_model(user = model_params,
                                         unused_user_action = "ignore")
-  out <- model_func$run(t = seq(0, tail(steps, 1), 1), atol = 1e-8, rtol = 1e-8)
+  out <- model_func$run(t = seq(0, tail(steps, 1), 1), atol = 1e-6, rtol = 1e-6)
   index <- squire:::odin_index(model_func)
 
   # get deaths for comparison

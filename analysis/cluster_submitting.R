@@ -4,7 +4,7 @@
 ## -----------------------------------------------------------------------------
 
 # how long is the mcmc for
-n_mcmc <- 10000
+n_mcmc <- 500000
 
 # should tasks be run in parallel and use multiple chains.
 # leave this as FALSE and see FAQs for more info on this
@@ -27,7 +27,7 @@ provinces <- c(
 
 
 # make the orderly bundles to be run on the cluster
-path_bundles <- cp_path("analysis/orderly_bundles/raw_short_update")
+path_bundles <- cp_path("analysis/orderly_bundles/raw_covmat_update")
 dir.create(path_bundles, showWarnings = FALSE)
 
 # bundle these up - this will take like 2 mins to create all the zips.
@@ -164,7 +164,7 @@ grp_grab <- grp
 paths <- gsub("raw", "derived", grp_grab$X[grp_grab$status() == "COMPLETE"])
 
 # now extract the fitting.pdf files
-td <- file.path(tempdir(), "pdfs2")
+td <- file.path(tempdir(), "pdfs18")
 dir.create(td, showWarnings = FALSE)
 fits <- lapply(paths, function(x) {
   if(file.exists(x)){
@@ -200,19 +200,19 @@ qpdf::pdf_combine(
 ## ------------------------------
 
 
-res <- readRDS(vapply(paths[29], function(x) {
+res <- readRDS(vapply(gsub("raw", "derived", grp$X[1]), function(x) {
   td <- tempdir()
   zip::unzip(
     zipfile = x,
     files = file.path(gsub("\\.zip", "", basename(x)), "pack/res.rds"),
     exdir = td
   )
-  grep("res.rds",
+  grep(paste0(gsub(".zip", "", basename(x),fixed = TRUE),".*res.rds$"),
        list.files(td, full.names = TRUE, recursive = TRUE),
        value = TRUE)
 }, character(1)))
 
-plot(res$pmcmc_results$chains$chain1$results$log_posterior)
+plot(res$pmcmc_results$results$log_posterior)
 
 res$pmcmc_results$chains$chain1$results[1,]
 

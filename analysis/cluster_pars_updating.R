@@ -26,6 +26,8 @@ get_best <- function(out) {
       best$scaling_factor <- tail(na.omit(out$pmcmc_results$scaling_factor),1)
     }
 
+    best$covariance_matrix[[1]][,] <- 0.3
+    best$scaling_factor <- 1
     best$province <- out$parameters$province
 
     return(best)
@@ -45,26 +47,11 @@ pars_list <- lapply(grp$X[grp$status()=="COMPLETE"], function(x) {
   get_best(out)
 })
 
-pars_list2 <- lapply(grp_short$X[grp$status() == "ERROR" & grp_short$status() == "COMPLETE"], function(x) {
-  out <- readRDS(
-    gzcon(
-      unz(
-        gsub("raw", "derived", x),
-        file.path(gsub("\\.zip", "", basename(x)), "pack/res.rds")
-      )
-    )
-  )
-  get_best(out)
-})
-
 # get the old conditions
 pars_init <- readRDS(file.path(here::here(), "src/prov_fit/pars_init.rds"))
 
 names(pars_list) <- unlist(lapply(pars_list, "[[", "province"))
-names(pars_list2) <- unlist(lapply(pars_list2, "[[", "province"))
 pars_init$central[match(names(pars_list), names(pars_init$central))] <- pars_list
-pars_init$central[match(names(pars_list2), names(pars_init$central))] <- pars_list2
-
 pars_init$optimistic <- pars_init$central
 pars_init$worst <- pars_init$central
 
