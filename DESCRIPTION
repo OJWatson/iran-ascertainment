@@ -37,7 +37,8 @@ Imports:
     ggforce,
     cowplot,
     RhpcBLASctl,
-    grDevices
+    grDevices,
+    grImport
 Remotes:
     mrc-ide/squire
     mrc-ide/odin

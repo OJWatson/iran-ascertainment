@@ -262,61 +262,100 @@ fit_spline_rt <- function(data,
 
   if (model == "SQUIRE") {
     squire_model = squire:::deterministic_model()
+
+    # run the pmcmc
+    res <- pmcmc_iran(data = data,
+                      gibbs_days = NULL,
+                      gibbs_sampling = FALSE,
+                      n_mcmc = n_mcmc,
+                      log_prior = logprior,
+                      n_particles = 1,
+                      steps_per_day = 1,
+                      log_likelihood = iran_log_likelihood,
+                      reporting_fraction = 1,
+                      squire_model = squire_model,
+                      output_proposals = FALSE,
+                      n_chains = n_chains,
+                      pars_init = pars_init,
+                      pars_min = pars_min,
+                      pars_max = pars_max,
+                      pars_discrete = pars_discrete,
+                      pars_obs = pars_obs,
+                      proposal_kernel = proposal_kernel,
+                      population = pop,
+                      baseline_contact_matrix = mix_mat,
+                      R0_change = R0_change,
+                      date_R0_change = date_R0_change,
+                      Rt_args = squire:::Rt_args_list(
+                        date_Meff_change = date_Meff_change,
+                        scale_Meff_pl = TRUE,
+                        Rt_shift_duration = 1,
+                        Rt_rw_duration = Rt_rw_duration),
+                      burnin = ceiling(n_mcmc/10),
+                      seeding_cases = 5,
+                      replicates = replicates,
+                      required_acceptance_ratio = 0.20,
+                      start_adaptation = start_adaptation,
+                      baseline_hosp_bed_capacity = hosp_beds,
+                      baseline_ICU_bed_capacity = icu_beds,
+                      scaling_factor = scaling_factor,
+                      dur_R = 365
+    )
+
   } else if(model == "NIMUE") {
     squire_model = nimue::nimue_deterministic_model(use_dde = TRUE)
+
+    # run the pmcmc
+    res <- pmcmc_iran(data = data,
+                      gibbs_days = NULL,
+                      gibbs_sampling = FALSE,
+                      n_mcmc = n_mcmc,
+                      log_prior = logprior,
+                      n_particles = 1,
+                      steps_per_day = 1,
+                      log_likelihood = iran_log_likelihood,
+                      reporting_fraction = 1,
+                      squire_model = squire_model,
+                      output_proposals = FALSE,
+                      n_chains = n_chains,
+                      pars_init = pars_init,
+                      pars_min = pars_min,
+                      pars_max = pars_max,
+                      pars_discrete = pars_discrete,
+                      pars_obs = pars_obs,
+                      proposal_kernel = proposal_kernel,
+                      population = pop,
+                      baseline_contact_matrix = mix_mat,
+                      R0_change = R0_change,
+                      date_R0_change = date_R0_change,
+                      Rt_args = squire:::Rt_args_list(
+                        date_Meff_change = date_Meff_change,
+                        scale_Meff_pl = TRUE,
+                        Rt_shift_duration = 1,
+                        Rt_rw_duration = Rt_rw_duration),
+                      burnin = ceiling(n_mcmc/10),
+                      seeding_cases = 5,
+                      replicates = replicates,
+                      required_acceptance_ratio = 0.20,
+                      start_adaptation = start_adaptation,
+                      baseline_hosp_bed_capacity = hosp_beds,
+                      baseline_ICU_bed_capacity = icu_beds,
+                      scaling_factor = scaling_factor,
+                      dur_R = 365,
+                      date_vaccine_change = vacc_inputs$date_vaccine_change,
+                      max_vaccine = vacc_inputs$max_vaccine,
+                      baseline_max_vaccine = 0,
+                      date_vaccine_efficacy_infection_change = vacc_inputs$date_vaccine_change,
+                      vaccine_efficacy_infection = vacc_inputs$vaccine_efficacy_infection,
+                      baseline_vaccine_efficacy_infection = vacc_inputs$vaccine_efficacy_infection[[1]],
+                      date_vaccine_efficacy_disease_change = vacc_inputs$date_vaccine_change,
+                      vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease,
+                      baseline_vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease[[1]],
+                      rel_infectiousness_vaccinated = vacc_inputs$rel_infectiousness_vaccinated,
+                      vaccine_coverage_mat = vaccine_coverage_mat,
+                      dur_V = 5000
+    )
   }
-
-  # run the pmcmc
-  res <- pmcmc_iran(data = data,
-                     gibbs_days = NULL,
-                     gibbs_sampling = FALSE,
-                     n_mcmc = n_mcmc,
-                     log_prior = logprior,
-                     n_particles = 1,
-                     steps_per_day = 1,
-                     log_likelihood = iran_log_likelihood,
-                     reporting_fraction = 1,
-                     squire_model = squire_model,
-                     output_proposals = FALSE,
-                     n_chains = n_chains,
-                     pars_init = pars_init,
-                     pars_min = pars_min,
-                     pars_max = pars_max,
-                     pars_discrete = pars_discrete,
-                     pars_obs = pars_obs,
-                     proposal_kernel = proposal_kernel,
-                     population = pop,
-                     baseline_contact_matrix = mix_mat,
-                     R0_change = R0_change,
-                     date_R0_change = date_R0_change,
-                     Rt_args = squire:::Rt_args_list(
-                       date_Meff_change = date_Meff_change,
-                       scale_Meff_pl = TRUE,
-                       Rt_shift_duration = 1,
-                       Rt_rw_duration = Rt_rw_duration),
-                     burnin = ceiling(n_mcmc/10),
-                     seeding_cases = 5,
-                     replicates = replicates,
-                     required_acceptance_ratio = 0.20,
-                     start_adaptation = start_adaptation,
-                     baseline_hosp_bed_capacity = hosp_beds,
-                     baseline_ICU_bed_capacity = icu_beds,
-                     scaling_factor = scaling_factor,
-                     dur_R = 365
-                     # date_vaccine_change = vacc_inputs$date_vaccine_change,
-                     # max_vaccine = vacc_inputs$max_vaccine,
-                     # baseline_max_vaccine = 0,
-                     # date_vaccine_efficacy_infection_change = vacc_inputs$date_vaccine_change,
-                     # vaccine_efficacy_infection = vacc_inputs$vaccine_efficacy_infection,
-                     # baseline_vaccine_efficacy_infection = vacc_inputs$vaccine_efficacy_infection[[1]],
-                     # date_vaccine_efficacy_disease_change = vacc_inputs$date_vaccine_change,
-                     # vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease,
-                     # baseline_vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease[[1]],
-                     # rel_infectiousness_vaccinated = vacc_inputs$rel_infectiousness_vaccinated,
-                     # vaccine_coverage_mat = vaccine_coverage_mat,
-                     # dur_V = 5000
-                    )
-
 
   ## remove things so they don't atke up so much memory when you save them :)
 
@@ -516,7 +555,7 @@ run_deterministic_comparison_iran <- function(data, squire_model, model_params, 
 
   if("dur_R" %in% names(obs_params)) {
     if(obs_params$dur_R != 365) {
-      ch_dur_R <- as.integer(as.Date("2021-03-01") - model_start_date)
+      ch_dur_R <- as.integer(as.Date("2021-05-01") - model_start_date)
       model_params$tt_dur_R <- c(0, ch_dur_R, ch_dur_R+60)
       model_params$gamma_R <- c(model_params$gamma_R, 2/obs_params$dur_R, model_params$gamma_R)
     }
@@ -524,7 +563,7 @@ run_deterministic_comparison_iran <- function(data, squire_model, model_params, 
 
   if("prob_hosp_multiplier" %in% names(obs_params)) {
     if(obs_params$prob_hosp_multiplier != 1) {
-      ch_dur_R <- as.integer(as.Date("2021-03-01") - model_start_date)
+      ch_dur_R <- as.integer(as.Date("2021-05-01") - model_start_date)
       model_params$tt_prob_hosp_multiplier <- c(0, ch_dur_R)
       model_params$prob_hosp_multiplier <- c(model_params$prob_hosp_multiplier, obs_params$prob_hosp_multiplier)
     }

@@ -2,19 +2,21 @@ library(devtools)
 install_github("adamkucharski/scrapR")
 library(scrapR)
 library(grImport)
+library(tidyverse)
 
 setwd(file.path(here::here(), "analysis/data/raw/hospitalisations"))
 
 # get the first y ticks from the plots
 first_y_ticks <- c(100, 100, 100, 200, 100, 30, 50, 1000,
-                   100, 50, 250, 50, 250, 50, 50, 50, 200,
-                   50, 100, 50, 200, 100, 50, 100,
+                   100, 50, 250, 50, 250, 50, 50, 50,
+                   200, 50, 100, 50, 200, 100, 50, 100,
                    200, 200, 300, 100, 100, 100, 50)
 
 # and qickly run through load_pdf_data calls below to work out the first labelled x axis
-guide_x_first <- c(15, 15, 15, 14, 14, 13, 12, 12, 11, 12, 14, 16,
-                   17, 15, 14, 16, 12, 14, 13, 13, 14, 13, 15, 14,
-                   15, 13, 14, 14, 14, 13, 14)
+guide_x_first <- c(15, 15, 15, 14, 14, 13, 12, 12,
+                   11, 12, 14, 14, 14, 15, 14, 16,
+                   12, 14, 13, 13, 14, 13, 15, 14,
+                   15, 13, 14, 14, 14, 14, 14)
 
 # province names
 provs <- c("East Azerbaijan","West Azerbaijan","Ardabil","Isfahan",
@@ -36,23 +38,23 @@ for(i in seq_along(pages)){
 
   # write the guide file as this seems broken in scrapr
   write.csv(
-    data.frame(point = c(guide_x_first[i],guide_x_first[i]+18,5,6,2,3),
-               value = c(0, 548, 0, first_y_ticks[i], NA, NA),
+    data.frame(point = c(guide_x_first[i],guide_x_first[i]+20,5,6,2,3),
+               value = c(0, as.integer(as.Date("2021-10-23") - as.Date("2020-02-20")), 0, first_y_ticks[i], NA, NA),
                axis = c("x","x","y","y", "data","data")),
     file = paste0("pages_", pages[i], ".pdf.guide.csv")
   )
 
   # extract our data
-  extract_PDF_data(paste0("pages_", pages[i], ".pdf"))
+  suppressMessages(extract_PDF_data(paste0("pages_", pages[i], ".pdf")))
 
   conf <- read.csv(paste0("pages_", pages[i], ".pdf2.csv"))
   susp <- read.csv(paste0("pages_", pages[i], ".pdf3.csv"))
 
   df <- rbind(
-    data.frame(date = as.Date("2019-12-01") + conf$x,
+    data.frame(date = as.Date("2020-02-20") + conf$x,
                hosp = conf$y,
                type = "confirmed"),
-    data.frame(date = as.Date("2019-12-01") + susp$x,
+    data.frame(date = as.Date("2020-02-20") + susp$x,
                hosp = susp$y,
                type = "suspected")
   )
@@ -78,7 +80,7 @@ load_PDF_data(file_name = "iran.pdf")
 # write the guide file as this seems broken in scrapr
 write.csv(
   data.frame(point = c(12,30,5,6,2,3),
-             value = c(0, 548, 0, 5000, NA, NA),
+             value = c(0, as.integer(as.Date("2021-10-23") - as.Date("2020-02-20")), 0, 5000, NA, NA),
              axis = c("x","x","y","y", "data","data")),
   file = paste0("iran.pdf.guide.csv")
 )
@@ -90,10 +92,10 @@ conf <- read.csv(paste0("iran.pdf2.csv"))
 susp <- read.csv(paste0("iran.pdf3.csv"))
 
 df <- rbind(
-  data.frame(date = as.Date("2019-12-01") + conf$x,
+  data.frame(date = as.Date("2020-02-20") + conf$x,
              hosp = conf$y,
              type = "confirmed"),
-  data.frame(date = as.Date("2019-12-01") + susp$x,
+  data.frame(date = as.Date("2020-02-20") + susp$x,
              hosp = susp$y,
              type = "suspected")
 )

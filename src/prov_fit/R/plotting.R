@@ -162,6 +162,7 @@ rt_plot_immunity <- function(out) {
       theme(axis.text = element_text(size=12)) +
       xlab("") +
       ylab("Reff") +
+      scale_x_date(date_labels = "%b %Y", date_breaks = "3 months") +
       scale_x_date(breaks = "2 weeks",
                    limits = as.Date(c(as.character(min_date),
                                       as.character(date_0+as.numeric(lubridate::wday(date_0))))),
@@ -218,16 +219,18 @@ sero_plot <- function(res, sero_df) {
   gg <- ggplot(inf, aes(date, sero_perc_med, ymin = sero_perc_min, ymax = sero_perc_max)) +
     geom_line() +
     geom_ribbon(alpha = 0.2) +
-    geom_point(aes(x = date_start + (date_end-date_start)/2, y = sero/100),
+    geom_point(aes(x = date_start + (date_end-date_start)/2, y = sero/100, color = source),
                sero_df, inherit.aes = FALSE) +
     geom_errorbar(aes(x = date_start + (date_end-date_start)/2,
-                      ymin = sero_min/100, ymax = sero_max/100),
+                      ymin = sero_min/100, ymax = sero_max/100, color = source),
                   sero_df, inherit.aes = FALSE, width = 0) +
-    geom_errorbarh(aes(y = sero/100, xmin = date_start, xmax = date_end),
+    geom_errorbarh(aes(y = sero/100, xmin = date_start, xmax = date_end, color = source),
                    sero_df, inherit.aes = FALSE, height = 0) +
     scale_x_date(date_labels = "%b %Y", date_breaks = "3 months") +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    theme_bw() + ylab("Seroprevalence") + xlab("")
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = c(0.1,0.8), legend.title = element_blank()) +
+    ylab("Seroprevalence") + xlab("")
   gg
 
   return(gg)

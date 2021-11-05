@@ -4,6 +4,7 @@
 
 # 1. Data Formatting -----------------------------
 
+# sero from Lancet GH paper
 dat <- read.csv(cp_path("analysis/data/raw/sero_data.csv"))
 
 replace_K <- function(x) {
@@ -56,9 +57,33 @@ df$date_end <- as.Date("2020-06-02")
 df$sero <- df$weighted_sero_mean
 df$sero_max <- df$weighted_sero_high
 df$sero_min <- df$weighted_sero_low
+df$source <- "Poustchi et al"
 
-saveRDS(df, cp_path("analysis/data/derived/sero.rds"))
-saveRDS(df, cp_path("src/prov_fit/sero.rds"))
+# -----------------------------
+# 1b. New sero data from Khalagi et al 2021 CMI -----------------------------
+# -----------------------------
+
+dat2 <- readLines(cp_path("analysis/data/raw/sero_data_khalagi.txt"))
+
+provs2 <- as.character(trimws(vapply(dat2, FUN = function(x){strsplit(x, "\\d")[[1]][1]}, character(1))))
+dat2 <- do.call(rbind,strsplit(gsub(",|\\(|\\)", "", trimws(gsub(paste0(provs2, collapse = "|"), "", dat2))), " "))
+
+dat2 <- as.data.frame(cbind(provs2, dat2))
+names(dat2) <- c("province", "sero", "sero_min", "sero_max",
+                 "crude_sero", "crude_sero_min", "crude_sero_max")
+dat2$date_start <- as.Date("2020-08-03")
+dat2$date_end <- as.Date("2020-10-31")
+dat2$source <- "Khalagi et al"
+
+full_sero <- rbind(df[,c("province", "sero","sero_min", "sero_max","date_start","date_end", "source")],
+      dat2[,c("province", "sero","sero_min", "sero_max","date_start","date_end", "source")])
+full_sero$sero <- as.numeric(full_sero$sero)
+full_sero$sero_min <- as.numeric(full_sero$sero_min)
+full_sero$sero_max <- as.numeric(full_sero$sero_max)
+
+
+saveRDS(full_sero, cp_path("analysis/data/derived/sero.rds"))
+saveRDS(full_sero, cp_path("src/prov_fit/sero.rds"))
 
 # 2. Data Visualisation -----------------------------
 

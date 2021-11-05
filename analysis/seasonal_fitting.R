@@ -282,7 +282,7 @@ prov_sa <- S_all %>%
   rename(province = prov)
 
 
-df <- readRDS(cp_path("data/derived/sero.rds"))
+df <- readRDS(cp_path("data/derived/sero.rds")) %>% filter(source == "Poustchi et al")
 df$weighted_sero_mean[which(df$city == "Rasht")] <- 22.2
 df$weighted_sero_low[which(df$city == "Rasht")] <- 16.4
 df$weighted_sero_high[which(df$city == "Rasht")] <- 28.5

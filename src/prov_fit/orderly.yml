@@ -141,6 +141,7 @@ resources:
   - pars_init.rds
   - sero.rds
   - deaths.rds
+  - vaccines.rds
 
 global_resources:
 

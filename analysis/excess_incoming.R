@@ -1,6 +1,6 @@
 library(tidyverse)
 
-# get age data
+# get prov data
 df <- read.csv(cp_path("analysis/data/raw/iran_deaths_province.csv"))
 df$year_nm <- df$year - 1398 + 2019
 add_zero <- function(x){
@@ -11,6 +11,8 @@ add_zero <- function(x){
   }
   return(x)
 }
+pos <- function(x){ x[x<0] <- 0; x}
+
 df$week_num <- vapply(df$week_num, add_zero, character(1))
 df$date <- as.Date(paste0(df$year_nm, df$week_num, 1), "%Y%W%w")
 df$date <- df$date + (as.Date("2020-03-20") - df$date[df$year == 1399 & df$week_num == "01"][1])
@@ -39,7 +41,22 @@ prov_df %>%
 saveRDS(prov_df, cp_path("src/prov_fit/deaths.rds"))
 
 
+# get age data
+df <- read.csv(cp_path("analysis/data/raw/iran_deaths_age_province.csv"))
+df$year_nm <- df$year - 1398 + 2019
+df$week_num <- vapply(df$week_num, add_zero, character(1))
+df$date <- as.Date(paste0(df$year_nm, df$week_num, 1), "%Y%W%w")
+df$date <- df$date + (as.Date("2020-03-20") - df$date[df$year == 1399 & df$week_num == "01"][1])
+df <- mutate(df, province_name = replace(province_name, which(province_name == "Kohgiluyeh and Boyer Ahmad"),"Kohgiluyeh and Boyer-Ahmad"))
+df <- mutate(df, province_name = replace(province_name, which(province_name == "Chahaar Mahal and Bakhtiari"),"Chahar Mahaal and Bakhtiari"))
+df$age_group <- squire::population$age_group[as.integer(factor(df$age_group, levels = levels(as.factor(df$age_group))[c(1,10,2:9,11:17)]))]
+saveRDS(df, cp_path("analysis/data/derived/iran_deaths_age_province.rds"))
 
+# check looks right
+prov_df %>%
+  ggplot(aes(date, deaths)) + geom_line() +
+  #geom_point(aes(y = excess_deaths_mean)) +
+  facet_wrap(~province, scales = "free_y")
 
 
 

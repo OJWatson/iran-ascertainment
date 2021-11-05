@@ -72,7 +72,7 @@ ggplot(mortality %>% mutate(season = factor(season, levels = c("Winter", "Spring
 
 
 # Pop weighted excess agianst seroprev
-df <- readRDS(cp_path("data/derived/sero.rds"))
+df <- readRDS(cp_path("data/derived/sero.rds")) %>% filter(source == "Poustchi et al")
 df <- left_join(df, (mortality %>% filter(season == "Spring")), "province")
 
 g2 <- ggplot(df, aes(x = cum_excess_per_1000,

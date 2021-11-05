@@ -63,6 +63,15 @@ deaths <- deaths[, c("date","deaths")]
 rownames(deaths) <- NULL
 deaths <- deaths[deaths$date < date, ] # pre delta & vaccination
 
+# get vaccine info
+vacc_inputs <- readRDS("vaccines.rds")
+vacc_inputs <- vacc_inputs[[province]]
+pos <- which(vacc_inputs$date_vaccine_change < max(deaths$date))
+vacc_inputs$date_vaccine_change <- vacc_inputs$date_vaccine_change[pos]
+vacc_inputs$max_vaccine <- vacc_inputs$max_vaccine[pos]
+vacc_inputs$vaccine_efficacy_infection <- vacc_inputs$vaccine_efficacy_infection[pos]
+vacc_inputs$vaccine_efficacy_disease <- vacc_inputs$vaccine_efficacy_disease[pos]
+
 ## -----------------------------------------------------------------------------
 ## 2. Fit Model
 ## -----------------------------------------------------------------------------
@@ -78,6 +87,7 @@ res <- fit_spline_rt(data = deaths,
                      model = model,
                      pars_obs_dur_R = as.numeric(dur_R),
                      pars_obs_prob_hosp_multiplier = as.numeric(prob_hosp_multiplier),
+                     vacc_inputs = vacc_inputs
                      )
 
 
@@ -95,7 +105,7 @@ res$output <- output
 if (model == "SQUIRE") {
 rtp <- rt_plot_immunity(res)
 } else {
-  rtp <- rt_plot_immunity(res)
+  rtp <- rt_plot_immunity_vaccine(res)
 }
 dp <- dp_plot(res)
 cdp <- cdp_plot(res)
@@ -103,7 +113,7 @@ sero <- sero_plot(res, sero_df)
 ar <- ar_plot(res)
 
 ggsave("fitting.pdf",width=12, height=15,
-       cowplot::plot_grid(rtp$plot + ggtitle(province),
-                          dp, cdp, sero, ar, ncol = 1))
+       cowplot::plot_grid(rtp$plot + ggtitle(province) + scale_x_date(date_labels = "%b %Y", date_breaks = "3 months"),
+                          dp, cdp, sero, ar, ncol = 1, align = "v"))
 
 
