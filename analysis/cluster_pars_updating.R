@@ -57,3 +57,8 @@ pars_init$worst <- pars_init$central
 
 # save to location
 saveRDS(pars_init, file.path(here::here(), "src/prov_fit/pars_init.rds"))
+
+
+## attempt at smoothing
+
+pars_init$central$Alborz$R0
