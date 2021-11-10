@@ -4,16 +4,16 @@
 ## -----------------------------------------------------------------------------
 
 # how long is the mcmc for
-n_mcmc <- 500000
+n_mcmc <- 100000
 
 # should tasks be run in parallel and use multiple chains.
 # leave this as FALSE and see FAQs for more info on this
-model <- "SQUIRE"
-dur_R <- 365
+model <- "NIMUE"
+dur_R <- 125
 prob_hosp_multiplier <- 1
 replicates <- 10
 rf <- 1
-date <- "2021-05-01"
+date <- "2021-09-07"
 
 # get the states
 provinces <- c(
@@ -27,7 +27,7 @@ provinces <- c(
 
 
 # make the orderly bundles to be run on the cluster
-path_bundles <- cp_path("analysis/orderly_bundles/raw_covmat_update")
+path_bundles <- cp_path("analysis/orderly_bundles/raw_vaccine_redo")
 dir.create(path_bundles, showWarnings = FALSE)
 
 # bundle these up - this will take like 2 mins to create all the zips.
@@ -164,7 +164,7 @@ grp_grab <- grp
 paths <- gsub("raw", "derived", grp_grab$X[grp_grab$status() == "COMPLETE"])
 
 # now extract the fitting.pdf files
-td <- file.path(tempdir(), "pdfs18")
+td <- file.path(tempdir(), "pdfs23")
 dir.create(td, showWarnings = FALSE)
 fits <- lapply(paths, function(x) {
   if(file.exists(x)){
@@ -184,7 +184,7 @@ pdfs <- grep("fitting", list.files(td, full.names = TRUE, recursive = TRUE), val
 # created because it needs to be for orderly to finish the task
 qpdf::pdf_combine(
   input = pdfs[file.size(pdfs) > 0],
-  output = cp_path("analysis/plots/fitting.pdf")
+  output = cp_path("analysis/plots/fitting_vacc.pdf")
 )
 
 ## ------------------------------
