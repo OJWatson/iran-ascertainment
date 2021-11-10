@@ -47,8 +47,9 @@ pars_list <- lapply(grp$X[grp$status()=="COMPLETE"], function(x) {
   get_best(out)
 })
 
-# vacc ones
-pars_list2 <- lapply(grp_vacc $X[grp_vacc$status()=="COMPLETE"], function(x) {
+# vacc one from earlier that we need
+grp_vacc <- obj$task_bundle_get("orderly_bundles_derived_vaccine_initial")
+pars_list2 <- lapply(grp_vacc$X[23], function(x) {
   out <- readRDS(
     gzcon(
       unz(

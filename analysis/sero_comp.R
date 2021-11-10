@@ -82,6 +82,37 @@ full_sero$sero_min <- as.numeric(full_sero$sero_min)
 full_sero$sero_max <- as.numeric(full_sero$sero_max)
 
 
+# -----------------------------
+# 1c. Extra sero -----------------------------
+# -----------------------------
+# https://www.apjtm.org/article.asp?issn=1995-7645;year=2021;volume=14;issue=1;spage=10;epage=16;aulast=Mousavi
+full_sero <- rbind(
+  full_sero,
+  data.frame(
+    "province" = "Mazandaran",
+    "sero" = 15.3,
+    "sero_min" = 13.0,
+    "sero_max" = 17.8,
+    "date_start" = as.Date("2020-03-23"),
+    "date_end" = as.Date("2020-05-23"),
+    "source" = "Mousavi et al"
+  )
+)
+
+# https://wwwnc.cdc.gov/eid/article/27/2/20-1960_article
+full_sero <- rbind(
+  full_sero,
+  data.frame(
+    "province" = "Gilan",
+    "sero" = 22.2,
+    "sero_min" = 16.4,
+    "sero_max" = 28.5,
+    "date_start" = as.Date("2020-04-11"),
+    "date_end" = as.Date("2020-04-19"),
+    "source" = "Shakiba et al"
+  )
+)
+
 saveRDS(full_sero, cp_path("analysis/data/derived/sero.rds"))
 saveRDS(full_sero, cp_path("src/prov_fit/sero.rds"))
 

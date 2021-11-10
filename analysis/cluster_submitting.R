@@ -4,7 +4,7 @@
 ## -----------------------------------------------------------------------------
 
 # how long is the mcmc for
-n_mcmc <- 100000
+n_mcmc <- 200000
 
 # should tasks be run in parallel and use multiple chains.
 # leave this as FALSE and see FAQs for more info on this
@@ -13,7 +13,7 @@ dur_R <- 125
 prob_hosp_multiplier <- 1
 replicates <- 10
 rf <- 1
-date <- "2021-09-07"
+date <- "2021-10-29"
 
 # get the states
 provinces <- c(
@@ -27,7 +27,7 @@ provinces <- c(
 
 
 # make the orderly bundles to be run on the cluster
-path_bundles <- cp_path("analysis/orderly_bundles/raw_vaccine_redo")
+path_bundles <- cp_path("analysis/orderly_bundles/raw_vaccine_full_data")
 dir.create(path_bundles, showWarnings = FALSE)
 
 # bundle these up - this will take like 2 mins to create all the zips.
@@ -200,7 +200,7 @@ qpdf::pdf_combine(
 ## ------------------------------
 
 
-res <- readRDS(vapply(gsub("raw", "derived", grp$X[1]), function(x) {
+res <- readRDS(vapply(gsub("raw", "derived", grp_vacc$X[23]), function(x) {
   td <- tempdir()
   zip::unzip(
     zipfile = x,
@@ -233,8 +233,8 @@ ll$log_likelihood
 ll$sample_state
 
 ## generate draws
-out <- generate_draws(res, draws = 20, burnin = 1000)
-plot(out, "ICU_occupancy", date_0 = "2021-05-01", x_var = "date")
+out <- generate_draws(res, draws = 5, burnin = 1000, parallel = FALSE)
+plot(out, "ICU_occupancy", date_0 = "2021-09-03", x_var = "date")
 
 deaths <- squire::format_output(out, "deaths", date_0 = "2021-05-01")
 deaths$y <- deaths$y*7
