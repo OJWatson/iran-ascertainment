@@ -4,7 +4,7 @@
 ## -----------------------------------------------------------------------------
 
 # how long is the mcmc for
-n_mcmc <- 200000
+n_mcmc <- 100000
 
 # should tasks be run in parallel and use multiple chains.
 # leave this as FALSE and see FAQs for more info on this
@@ -164,7 +164,7 @@ grp_grab <- grp
 paths <- gsub("raw", "derived", grp_grab$X[grp_grab$status() == "COMPLETE"])
 
 # now extract the fitting.pdf files
-td <- file.path(tempdir(), "pdfs23")
+td <- file.path(tempdir(), "pdfs24")
 dir.create(td, showWarnings = FALSE)
 fits <- lapply(paths, function(x) {
   if(file.exists(x)){
@@ -310,7 +310,7 @@ left_join(
 
 
 
-(max(squire::format_output(out, "D")$y) / diff(range(squire::format_output(out, "S")$y)))*100
+(max(nimue::format(out, "D")$value, na.rm=TRUE) / diff(range(nimue::format(out, "S")$value, na.rm=TRUE)))*100
 
 plot(out, "ICU_occupancy", x_var = "date", date_0 = "2021-05-01")+ ylab("ICU Occupancy") + xlab("Date") +
   theme(legend.position = "none")

@@ -948,7 +948,7 @@ rt_plot_immunity_vaccine <- function(out) {
     arrange(date) %>%
     complete(date = seq.Date(min(rt$date), date_0, by = "days"))
 
-  column_names <- colnames(new_rt_all)[-c(1,2,3)]
+  column_names <- colnames(new_rt_all)[-c(1,2)]
   new_rt_all <- fill(new_rt_all, all_of(column_names), .direction = c("down"))
   new_rt_all <- fill(new_rt_all, all_of(column_names), .direction = c("up"))
 
