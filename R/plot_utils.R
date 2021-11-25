@@ -22,7 +22,7 @@ save_figs <- function(name,
 
 #' Create a final death per age dataset
 #' @param res squire model run
-#'
+#' @importFrom dplyr summarise
 final_deaths <- function(res) {
 
   date_0 <- max(res$pmcmc_results$inputs$data$date)
@@ -46,16 +46,28 @@ final_deaths <- function(res) {
 #'
 final_death_comp_df <- function(res, df) {
 
-df %>% filter(province_name == res$parameters$province) %>%
-  group_by(age_group) %>%
-  summarise(d = sum((excess_deaths_mean)),
-            d_pos = sum(pos(excess_deaths_mean))) %>%
-  cbind(final_deaths(res)[,-1]) %>%
-  cbind(data.frame("n" = res$parameters$population)) %>%
-  mutate(d_cap = pos((d*(100000/n))),
-         d_cap_pos = (d_pos*(100000/n))) %>%
-  tidyr::pivot_longer(cols = c("cap_med", "d_cap", "d_cap_pos")) %>%
-  mutate(province = res$parameters$province)
+  df %>% filter(province_name == res$parameters$province) %>%
+    group_by(age_group) %>%
+    summarise(d = sum((excess_deaths_mean)),
+              d_pos = sum(pos(excess_deaths_mean)),
+              d_max = sum((excess_deaths_low)),
+              d_pos_max = sum(pos(excess_deaths_low)),
+              d_min = sum((excess_deaths_high)),
+              d_pos_min = sum(pos(excess_deaths_high))) %>%
+    cbind(final_deaths(res)[,-1]) %>%
+    cbind(data.frame("n" = res$parameters$population)) %>%
+    mutate(dcap_med = pos((d*(100000/n))),
+           dcappos_med = (d_pos*(100000/n)),
+           dcap_min = pos((d_min*(100000/n))),
+           dcappos_min = (d_pos_min*(100000/n)),
+           dcap_max = pos((d_max*(100000/n))),
+           dcappos_max = (d_pos_max*(100000/n))) %>%
+    tidyr::pivot_longer(cols = c("cap_med", "cap_min", "cap_max",
+                                 "dcap_med", "dcap_min", "dcap_max",
+                                 "dcappos_med", "dcappos_min", "dcappos_max"),
+                        names_pattern = "(.*)_(.*)", names_to = c("source", "stat")) %>%
+    mutate(province = res$parameters$province) %>%
+    tidyr::pivot_wider(id_cols = c("age_group", "province", "source"), names_from = "stat", values_from = "value")
 
 }
 
@@ -67,11 +79,21 @@ df %>% filter(province_name == res$parameters$province) %>%
 final_death_comp_province <- function(res, df) {
 
   final_death_comp_df(res, df) %>%
-    ggplot(aes(age_group, value, color = name)) +
-    geom_line(aes(group = name)) +
+    filter(source != "dcap") %>%
+    ggplot(aes(age_group, med, ymin = min, ymax = max, color = source, fill = source, group = source)) +
+    geom_line() +
+    geom_ribbon(alpha = 0.2) +
     scale_y_log10() +
-    scale_color_discrete(name = "Source",
-                         labels = c("d_cap"="Observed Excess Deaths", "d_cap_pos"="Observed Positive Excess Deaths","cap_med"="Modelled Deaths")) +
+    scale_color_discrete(
+      name = "Source",
+      labels = c("dcap"="Observed Excess Deaths",
+                 "dcappos"="Observed Positive Excess Deaths",
+                 "cap"="Modelled Deaths")) +
+    scale_fill_discrete(
+      name = "Source",
+      labels = c("dcap"="Observed Excess Deaths",
+                 "dcappos"="Observed Positive Excess Deaths",
+                 "cap"="Modelled Deaths")) +
     ylab("Final Epidemic Deaths / 100000") +
     xlab("Age Group") +
     theme_bw()
@@ -81,16 +103,16 @@ final_death_comp_province <- function(res, df) {
 #' @noRd
 infs_over_time <- function(res) {
 
-S_tot <- sum(res$pmcmc_results$inputs$model_params$population)
-date_0 <- max(res$pmcmc_results$inputs$data$date)
-inf <- nim_sq_format(res, "infections", date_0 = date_0) %>%
-  mutate(infections = as.integer(y)) %>%
-  select(replicate, t, date, infections) %>%
-  group_by(replicate) %>%
-  mutate(infections = lag(cumsum(replace_na(infections, 0)), 1, default = 0)) %>%
-  mutate(province = res$parameters$province)
+  S_tot <- sum(res$pmcmc_results$inputs$model_params$population)
+  date_0 <- max(res$pmcmc_results$inputs$data$date)
+  inf <- nim_sq_format(res, "infections", date_0 = date_0) %>%
+    mutate(infections = as.integer(y)) %>%
+    select(replicate, t, date, infections) %>%
+    group_by(replicate) %>%
+    mutate(infections = lag(cumsum(replace_na(infections, 0)), 1, default = 0)) %>%
+    mutate(province = res$parameters$province)
 
-return(inf)
+  return(inf)
 
 }
 
