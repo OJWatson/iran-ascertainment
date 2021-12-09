@@ -98,6 +98,10 @@ names(provs_worst) <- vapply(provs_worst, function(x){x$parameters$province}, ch
 df <- readRDS(cp_path("analysis/data/derived/iran_deaths_age_province.rds"))
 pos <- function(x){ x[x<0] <- 0; x}
 
+demog <- readRDS(cp_path("analysis/data/derived/demog.rds"))
+pop_n <- demog %>% mutate(age_group = factor(age_group, levels = age_group[1:17])) %>%
+  group_by(age_group) %>% summarise(n = sum(n)) %>% pull(n)
+
 death_comps_central <- pbapply::pblapply(provs_central, final_deaths)
 
 final_death_national_gg <- left_join(
@@ -116,14 +120,16 @@ final_death_national_gg <- left_join(
   pivot_wider(names_from = "stat", values_from = "value") %>%
   # mutate(min = replace(min, name %in% c("d", "d_pos"), NA)) %>%
   # mutate(max = replace(max, name %in% c("d", "d_pos"), NA)) %>%
-  mutate(across(.cols = c("min", "max", "med"),  ~ .x * (100000/as.numeric(mapply(rep, squire::get_population("Iran")$n, 3))))) %>%
+  mutate(across(.cols = c("min", "max", "med"),  ~ .x * (100000/as.numeric(mapply(rep, pop_n, 3))))) %>%
   mutate(min = pos(min), max = pos(max), med = pos(med)) %>%
   filter(source %in% c("model", "dpos")) %>%
   ggplot(aes(age_group, med, color = source, fill = source, ymin = min, ymax = max, group = source)) +
   geom_ribbon(alpha = 0.2) +
   geom_line(aes(group = source)) +
   ggpubr::theme_pubclean(base_size = 14) +
-  theme(axis.line = element_line(), legend.key = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.line = element_line(), legend.key = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank()) +
   scale_y_log10() +
   scale_color_discrete(
     name = "Source:",
@@ -137,7 +143,7 @@ final_death_national_gg <- left_join(
                "model"="Modelled Deaths")) +
   ylab("Final Epidemic Deaths / 100000") +
   xlab("Age Group")
-save_figs("final_death_national", final_death_national_gg, width = 8, height = 8)
+save_figs("final_death_national", final_death_national_gg, width = 10, height = 8)
 
 # ------------------------------------------------------------------------------
 # PFR plot subnationally COME BACK TO
@@ -181,6 +187,9 @@ save_figs("final_death_national", final_death_national_gg, width = 8, height = 8
 inf_comp_central <-  pbapply::pblapply(provs_central, infs_over_time)
 inf_comp_worst <-  pbapply::pblapply(provs_worst, infs_over_time)
 inf_comp_optimistic <-  pbapply::pblapply(provs_optimistic, infs_over_time)
+demog <- readRDS(cp_path("analysis/data/derived/demog.rds"))
+pop_n <- demog %>% mutate(age_group = factor(age_group, levels = age_group[1:17])) %>%
+  group_by(age_group) %>% summarise(n = sum(n)) %>% pull(n)
 
 inf_comp <- left_join(
   do.call(rbind, inf_comp_central) %>%
@@ -198,7 +207,7 @@ inf_comp <- left_join(
               summarise(infs = sum(infections, na.rm = TRUE)) %>%
               group_by(date) %>%
               summarise(max = median(infs)))  %>%
-  mutate(across(med:max, ~.x/sum(squire::get_population("Iran")$n)))
+  mutate(across(med:max, ~.x/sum(pop_n)))
 
 national_ar_gg <- inf_comp %>%
   ggplot(aes(date, med, ymin = min, ymax = max)) +
@@ -207,9 +216,11 @@ national_ar_gg <- inf_comp %>%
   ylab("Cumulative Attack Rate") +
   xlab("") +
   ggpubr::theme_pubclean(base_size = 14) +
-  theme(axis.line = element_line()) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) +
   scale_y_continuous(labels = scales::percent, limits = c(0,1)) +
-  scale_x_date(date_labels = "%b %Y", breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
+  scale_x_date(date_labels = "%b %Y",
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
 save_figs("national_ar", national_ar_gg, width = 6, height = 4)
 
 
@@ -316,7 +327,11 @@ inf_comp_age_central <-  pbapply::pblapply(provs_central, infs_over_time_age)
 inf_comp_age_worst <-  pbapply::pblapply(provs_worst, infs_over_time_age)
 inf_comp_age_optimistic <-  pbapply::pblapply(provs_optimistic, infs_over_time_age)
 
-S_tot <- data.frame("pop" = squire::get_population("Iran")$n,
+demog <- readRDS(cp_path("analysis/data/derived/demog.rds"))
+pop_n <- demog %>% mutate(age_group = factor(age_group, levels = age_group[1:17])) %>%
+  group_by(age_group) %>% summarise(n = sum(n)) %>% pull(n)
+
+S_tot <- data.frame("pop" = pop_n,
                     "age_group" = levels(inf_comp_age_central[[1]]$age_group))
 
 inf_comp_age <- left_join(
@@ -342,10 +357,12 @@ national_ar_age_gg <- inf_comp_age  %>%
   mutate(across(med:max, ~.x/pop))  %>%
   filter(date == max(inf_comp_age$date)) %>%
   ggplot(aes(age_group, med, ymin = min, ymax = max)) +
-  #geom_point(size = 0.5) +
+  geom_point(size = 2) +
   geom_errorbar(size = 1, width = 0.4) +
   ggpubr::theme_pubclean(base_size = 14) +
-  theme(axis.line = element_line(), legend.key = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(axis.line = element_line(), legend.key = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank()) +
   ylab("National Attack Rate") +
   xlab("Age Group") +
   scale_y_continuous(labels = scales::percent)
@@ -606,6 +623,37 @@ reinfections_national_gg <- reinfections_dat %>%
                breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
 save_figs("reinfections_national", reinfections_national_gg, width = 6, height = 4)
 
+# ------------------------------------------------------------------------------
+# Investigate odriscol ifr impact on attack rate by age
+# ------------------------------------------------------------------------------
+
+ifr <- (probs$prob_hosp * probs$prob_severe * probs$prob_severe_death_treatment) +
+  (probs$prob_hosp * (1-probs$prob_severe) * probs$prob_non_severe_death_treatment)
+
+odriscoll <- c(0.003, 0.001, 0.001, 0.003, 0.006, 0.013,
+               0.024, 0.04, 0.075, 0.121, 0.207, 0.323, 0.456,
+               1.075, 1.674, 3.203, 8.292)/100
+
+infs_final <- inf_comp_age %>% filter(date == max(inf_comp_age$date))
+infs_final$n <- pop_n
+
+curent_deaths_total <- sum(infs_final$max * ifr)
+new_deaths_total <- sum(infs_final$max * odriscoll)
+
+multiplier_of_attack_rate <- curent_deaths_total/new_deaths_total
+infs_final$new_max <- infs_final$max * multiplier_of_attack_rate
+
+ggplot(infs_final, aes(age_group, med/n, ymin = min/n, ymax = max/n)) +
+  geom_point(size = 2) +
+  geom_errorbar(aes(ymax = new_max/n), size = 1, width = 0.4, color = "red") +
+  geom_errorbar(size = 1, width = 0.4) +
+  ggpubr::theme_pubclean(base_size = 14) +
+  theme(axis.line = element_line(), legend.key = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank()) +
+  ylab("National Attack Rate") +
+  xlab("Age Group") +
+  scale_y_continuous(labels = scales::percent)
 
 # ------------------------------------------------------------------------------
 # Investigate per province attack rate by age
