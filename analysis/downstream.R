@@ -78,16 +78,19 @@ provs_worst <- parallel::mclapply(worst_rds, function(x) {
 names(provs_central) <- vapply(provs_central, function(x){x$parameters$province}, character(1))
 names(provs_optimistic) <- vapply(provs_optimistic, function(x){x$parameters$province}, character(1))
 names(provs_worst) <- vapply(provs_worst, function(x){x$parameters$province}, character(1))
-saveRDS(provs_central, "analysis/data/derived/model_fits_central.rds")
-saveRDS(provs_worst, "analysis/data/derived/model_fits_worst.rds")
-saveRDS(provs_optimistic, "analysis/data/derived/model_fits_optimistic.rds")
+
+# uncomment these if memory being an issue
+
+# saveRDS(provs_central, "analysis/data/derived/model_fits_central.rds")
+# saveRDS(provs_worst, "analysis/data/derived/model_fits_worst.rds")
+# saveRDS(provs_optimistic, "analysis/data/derived/model_fits_optimistic.rds")
 
 
 # read in data
 
-provs_central <- readRDS("analysis/data/derived/model_fits_central.rds")
-provs_worst <- readRDS("analysis/data/derived/model_fits_worst.rds")
-provs_optimistic <- readRDS("analysis/data/derived/model_fits_optimistic.rds")
+# provs_central <- readRDS("analysis/data/derived/model_fits_central.rds")
+# provs_worst <- readRDS("analysis/data/derived/model_fits_worst.rds")
+# provs_optimistic <- readRDS("analysis/data/derived/model_fits_optimistic.rds")
 
 # ------------------------------------------------------------------------------
 # final death plot nationally
@@ -218,30 +221,66 @@ prov <- "Kohgiluyeh and Boyer-Ahmad"
 hosps <- hosps %>% mutate(province = replace(province, which(province == "Kohgiluyeh and Boyer Ahmad"), "Kohgiluyeh and Boyer-Ahmad"))
 hosps <- hosps %>% mutate(province = replace(province, which(province == "Yaz"), "Yazd"))
 
-hosp_all_comp_plot <- function(provs) {
+hosp_all_comp_plot <- function(provs_central, provs_worst, provs_optimistic) {
 
-  date_0 <- max(provs[[1]]$pmcmc_results$inputs$data$date)
-  H <- lapply(provs, nim_sq_format, c("hospitalisations"), date_0 = date_0)
+  date_0 <- max(provs_central[[1]]$pmcmc_results$inputs$data$date)
+
+  # H for each range
+  H <- lapply(provs_central, nim_sq_format, c("hospitalisations"), date_0 = date_0)
   for(i in seq_along(H)) {
-    H[[i]]$province <- names(provs)[i]
+    H[[i]]$province <- names(provs_central)[i]
+    H[[i]]$source <- "med"
   }
-  H <- do.call(rbind, H) %>%
-    group_by(replicate, t, date, province, compartment) %>%
-    summarise(y = sum(y, na.rm=TRUE))
-  H_dat <- group_by(H, province, compartment, date) %>%
+  H_low <- lapply(provs_optimistic, nim_sq_format, c("hospitalisations"), date_0 = date_0)
+  for(i in seq_along(H_low)) {
+    H_low[[i]]$province <- names(provs_optimistic)[i]
+    H_low[[i]]$source <- "min"
+  }
+  H_high <- lapply(provs_worst, nim_sq_format, c("hospitalisations"), date_0 = date_0)
+  for(i in seq_along(H_high)) {
+    H_high[[i]]$province <- names(provs_worst)[i]
+    H_high[[i]]$source <- "max"
+  }
+
+  H_dat <- do.call(rbind, H) %>%
+    group_by(replicate, t, date, province, compartment, source) %>%
+    summarise(y = sum(y, na.rm=TRUE)) %>%
+    group_by(province, compartment, date, source) %>%
     summarise(across(y, .fns = list(
-      min =~ quantile(y, 0.025, na.rm = TRUE),
-      med =~ quantile(y, 0.5, na.rm = TRUE),
-      max =~ quantile(y, 0.975, na.rm = TRUE)
+      med =~ quantile(y, 0.5, na.rm = TRUE)
     ),.names = "{.fn}"))
+
+  H_dat_low <- do.call(rbind, H_low) %>%
+    group_by(replicate, t, date, province, compartment, source) %>%
+    summarise(y = sum(y, na.rm=TRUE)) %>%
+    group_by(province, compartment, date, source) %>%
+    summarise(across(y, .fns = list(
+      max =~ quantile(y, 0.5, na.rm = TRUE)
+    ),.names = "{.fn}"))
+
+  H_dat_high <- do.call(rbind, H_high) %>%
+    group_by(replicate, t, date, province, compartment, source) %>%
+    summarise(y = sum(y, na.rm=TRUE)) %>%
+    group_by(province, compartment, date, source) %>%
+    summarise(across(y, .fns = list(
+      min =~ quantile(y, 0.5, na.rm = TRUE)
+    ),.names = "{.fn}"))
+
+  H_dat2 <- left_join(ungroup(H_dat) %>% select(-source), ungroup(H_dat_high)%>% select(-source),
+                      by = c("province", "compartment", "date")) %>%
+    left_join(ungroup(H_dat_low)%>% select(-source), by = c("province", "compartment", "date")) %>%
+    mutate(max2 = max(max, min), min2 = min(max, min)) %>% select(-min, -max) %>% rename(max = max2, min = min2)
 
   ggplot(hosps %>%
            filter(province != "Iran") %>%
            mutate(type = replace(type, which(type == "suspected"), "c_suspected")),
-         aes(date, hosp, color = type)) +
+         aes(date, hosp, ymin = hosp, ymax = hosp, color = type, fill = type)) +
     geom_line() +
+    geom_ribbon(alpha = 0.2) +
     geom_line(aes(date, med, color = compartment),
-              H_dat[H_dat$province != "Iran",], inherit.aes = FALSE) +
+              H_dat2[H_dat2$province != "Iran",], inherit.aes = FALSE) +
+    geom_ribbon(aes(date, med, ymin = min, ymax = max, color = compartment, fill = compartment),
+              H_dat2[H_dat2$province != "Iran",], alpha = 0.2, inherit.aes = FALSE) +
     theme(axis.title = element_blank()) +
     facet_wrap(~province, scales = "free_y", ncol = 4) +
     scale_color_discrete(
@@ -249,14 +288,23 @@ hosp_all_comp_plot <- function(provs) {
       labels = c("confirmed"="Observed Confirmed",
                  "c_suspected"="Observed Suspected",
                  "hospitalisations"="Modelled Daily Hospitalisations")) +
+    scale_fill_discrete(
+      name = "Source:",
+      labels = c("confirmed"="Observed Confirmed",
+                 "c_suspected"="Observed Suspected",
+                 "hospitalisations"="Modelled Daily Hospitalisations")) +
     ylab("Hospital Data") +
     ggpubr::theme_pubclean(base_size = 14) +
-    theme(axis.line = element_line(), axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x = element_blank()) +
-    scale_x_date(date_labels = "%b %Y", breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
+    theme(axis.line = element_line(),
+          panel.grid.major.x = element_blank(),
+          axis.text.x = element_text(angle = 45, hjust = 1),
+          axis.title.x = element_blank()) +
+    scale_x_date(date_labels = "%b %Y",
+                 breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
 
 
 }
-hosp_all_gg <- hosp_all_comp_plot(provs_central)
+hosp_all_gg <- hosp_all_comp_plot(provs_central, provs_worst, provs_optimistic)
 save_figs("hosp_all", hosp_all_gg, width = 12, height = 16)
 
 
@@ -411,17 +459,166 @@ ifr_tbl <- ifr_tbl %>%
   select(province, ifr)
 write.table(ifr_tbl, cp_path("analysis/tables/province_ifrs.csv"), row.names = FALSE)
 
+# ------------------------------------------------------------------------------
+# Estimated IFRs By Waves
+# ------------------------------------------------------------------------------
 
-## Per province plot for attack rate
+ifr_by_waves_func <- function(provs) {
 
-prov <- "Ardabil"
-infs <- nim_sq_format(provs[[prov]], "infections", FALSE, date_0 = max(provs[[prov]]$pmcmc_results$inputs$data$date))
-infs_over_time_age(provs[[prov]]) %>%
+  do.call(rbind, lapply(provs, function(x){
+
+    cumsum_na <- function(x) {x[is.na(x)] <- 0; cumsum(x)}
+
+    dat <- left_join(
+      nim_sq_format(x, "D", date_0 = max(x$pmcmc_results$inputs$data$date)) %>%
+        group_by(replicate, date) %>%
+        summarise(D = max(y, na.rm =TRUE)) %>%
+        ungroup,
+      nim_sq_format(x, "infections", date_0 = max(x$pmcmc_results$inputs$data$date)) %>%
+        group_by(replicate) %>%
+        mutate(infections = lag(cumsum_na(y),20)) %>%
+        ungroup,
+      by = c("date", "replicate")
+    )
+
+    wave_breaks <- as.Date(c("2020-06-01", "2020-08-01", "2021-02-01","2021-07-01"))
+    dat <- dat %>% mutate(
+      wave = case_when(date >= as.Date("2018-01-01") & date < wave_breaks[1] ~ "Wave 1",
+                       date >= wave_breaks[1] & date < wave_breaks[2] ~ "Wave 2",
+                       date >= wave_breaks[2] & date < wave_breaks[3] ~ "Wave 3",
+                       date >= wave_breaks[3] & date < wave_breaks[4] ~ "Wave 4",
+                       date >= wave_breaks[4] ~ "Wave 5"))
+
+    dat_waves <- split.data.frame(dat, dat$wave)
+
+    ifr_waves <- lapply(dat_waves, function(y) {
+
+      group_by(y, replicate, wave) %>%
+        summarise(D = max(D)-min(D),
+                  infections = max(infections,na.rm=TRUE) - min(infections, na.rm = TRUE)) %>%
+        mutate(ifr = D/infections) %>%
+        group_by(wave) %>%
+        summarise(across(ifr, .fns = list(
+          min =~ quantile(.x, 0.025, na.rm = TRUE),
+          med =~ quantile(.x, 0.5, na.rm = TRUE),
+          max =~ quantile(.x, 0.975, na.rm = TRUE)
+        ),.names = "{.fn}")) %>%
+        select(med, wave)
+
+    })
+
+    out <- do.call(rbind, ifr_waves) %>%
+      mutate("Province" =  x$parameters$province)
+    out
+
+  }))
+
+}
+
+ifr_tbl_central_waves <- ifr_by_waves_func(provs_central)
+ifr_tbl_worst_waves <- ifr_by_waves_func(provs_worst)
+ifr_tbl_optimistic_waves <- ifr_by_waves_func(provs_optimistic)
+
+ifr_tbl_waves <- left_join(ifr_tbl_central_waves,
+                           rename(ifr_tbl_worst_waves, max = med)) %>%
+  left_join(rename(ifr_tbl_optimistic_waves, min = med))
+ifr_tbl_waves <- ifr_tbl_waves %>%
+  group_by(Province, wave) %>%
+  mutate(ifr = paste0(
+    scales::percent(med, accuracy = 0.01), " [",
+    scales::percent(min, accuracy = 0.01), ", ",
+    scales::percent(max, accuracy = 0.01),"]"
+  )) %>%
+  select(Province, wave, ifr) %>%
+  pivot_wider(names_from = wave, values_from = ifr)
+write.table(ifr_tbl_waves, cp_path("analysis/tables/province_ifrs_waves.csv"), row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+# Reinfections over time
+# ------------------------------------------------------------------------------
+
+reinfections_by_province <- function(prov) {
+
+  do.call(rbind, lapply(prov, function(x){
+
+out <- nimue_format(x, c("S","infections"), date_0 = max(x$pmcmc_results$inputs$data$date))
+
+reinf_dat <- out %>% pivot_wider(names_from = compartment, values_from = y) %>%
+  mutate(infections = replace_na(infections, 0)) %>%
+  mutate(S_drop = abs(S - max(S))) %>%
+  group_by(replicate) %>%
+  mutate(cumu_infs = cumsum(infections)) %>%
+  mutate(diff = (cumu_infs - S_drop)/max(S)) %>%
+  mutate(reinfs = diff*infections) %>%
+  mutate(cumu_reinfs = cumsum(reinfs)) %>%
+  mutate(prop_reinfs = cumu_reinfs/cumu_infs) %>%
+  group_by(date) %>%
+  summarise(med_reinfs = median(cumu_reinfs),
+            med_infs = median(cumu_infs),
+            med_prop = median(prop_reinfs)) %>%
+  mutate(province = x$parameters$province)
+
+return(reinf_dat)
+}))
+}
+
+reinfections_low <- reinfections_by_province(provs_optimistic)
+reinfections_central <- reinfections_by_province(provs_central)
+reinfections_worst <- reinfections_by_province(provs_worst)
+
+reinfections_dat <- left_join(
+  reinfections_central,
+  rename(reinfections_low, min_reinfs = med_reinfs, min_prop = med_prop, min_infs = med_infs)) %>%
+  left_join(rename(reinfections_worst, max_reinfs = med_reinfs, max_prop = med_prop, max_infs = med_infs))
+
+reinfections_province_gg <- reinfections_dat %>%
+  ggplot(aes(date, med_prop, ymin = min_prop, ymax = max_prop)) +
+  geom_line() +
+  geom_ribbon(alpha = 0.2) +
+  theme(axis.title.x = element_blank()) +
+  facet_wrap(~province, scales = "free_y", ncol = 4) +
+  ylab("Proportion of Infections due to Reinfections") +
+  ggpubr::theme_pubclean(base_size = 14) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) +
+  scale_x_date(date_labels = "%b %Y",
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
+save_figs("reinfections_province", reinfections_province_gg, width = 12, height = 16)
+
+reinfections_national_gg <- reinfections_dat %>%
+  group_by(date) %>%
+  summarise(med = sum(med_reinfs)/sum(med_infs),
+            min = sum(min_reinfs)/sum(min_infs),
+            max = sum(max_reinfs)/sum(max_infs)) %>%
+  ggplot(aes(date, med, ymin = min, ymax = max)) +
+  geom_line() +
+  geom_ribbon(alpha = 0.2) +
+  theme(axis.title.x = element_blank()) +
+  ylab("Proportion of Infections due to Reinfections") +
+  ggpubr::theme_pubclean(base_size = 14) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.x = element_blank()) +
+  scale_x_date(date_labels = "%b %Y",
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
+save_figs("reinfections_national", reinfections_national_gg, width = 6, height = 4)
+
+
+# ------------------------------------------------------------------------------
+# Investigate per province attack rate by age
+# ------------------------------------------------------------------------------
+
+prov <- names(provs_central)[15]
+infs <- nim_sq_format(provs_central[[prov]], "infections", FALSE, date_0 = max(provs_central[[prov]]$pmcmc_results$inputs$data$date))
+infs_over_time_age(provs_central[[prov]]) %>%
   group_by(date, age_group, replicate) %>%
   summarise(infections = sum(infections, na.rm = TRUE)) %>%
   group_by(replicate, age_group) %>%
   summarise(infections = max(infections, na.rm = TRUE)) %>%
-  left_join(data.frame("pop" = provs[[prov]]$parameters$population,
+  left_join(data.frame("pop" = provs_central[[prov]]$parameters$population,
                        "age_group" = levels(.$age_group))
   ) %>%
   mutate(ar = infections/pop) %>%
