@@ -737,15 +737,18 @@ sero_dat <- sero_dat %>% mutate(
 sero_comp_table <- left_join(sero_dat %>% select(province, sero_pos, samples),
           inf_comp_province_sero %>%
             filter(date %in% c(sero_dat$date_mid, sero_dat$date_start, sero_dat$date_end)) %>%
-            select(date, province, med, new_med)
+            select(date:new_min)
 )
 
-sero_comp_table$ll <- dbinom(sero_comp_table$sero_pos, sero_comp_table$samples, sero_comp_table$med, log = TRUE)
-sero_comp_table$ll_new <- dbinom(sero_comp_table$sero_pos, sero_comp_table$samples, sero_comp_table$new_med, log = TRUE)
+sero_comp_table <- mutate(
+  sero_comp_table,
+  across(med:new_min, .fns = ~ dbinom(sero_pos, samples, .x, log = TRUE), .names = "ll_{.col}")
+  )
 
-sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll:ll_new) %>%
-    mutate(name = case_when(name == "ll" ~ "Brazeau et al.",
-                            name == "ll_new" ~ "O'Driscoll et al.")) %>%
+# median lls across all provinces
+sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = c("ll_med","ll_new_med")) %>%
+    mutate(name = case_when(name == "ll_med" ~ "Brazeau et al.",
+                            name == "ll_new_med" ~ "O'Driscoll et al.")) %>%
     select(province, date, name, value) %>%
     pivot_wider(names_from = date, values_from = value) %>%
     set_names(c("province", "name", "min", "med", "max")) %>%
@@ -761,6 +764,29 @@ sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll:ll_new) %>%
     scale_color_manual(name = "IFR Source:",
                        values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
 save_figs("sero_comp_ll", sero_comp_ll_gg, width = 6, height = 4)
+
+sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_new_min) %>%
+  mutate(Source = "Brazeau et al.") %>%
+  mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
+  mutate(name = gsub("(ll.*)_(m.*)", "\\2", name)) %>%
+  filter(date == as.Date("2020-09-16")) %>%
+  select(province, Source, name, value) %>%
+  pivot_wider(names_from = name, values_from = value) %>%
+  ggplot(aes(y=-med, ymin=-min, ymax=-max, color = Source, x = province)) +
+  geom_errorbar(position = position_dodge(width = 0.5), width = 0.4) +
+  scale_y_log10() +
+  coord_flip() +
+  ylab("Negative Log Likelihood of Model Fit \nagainst Khalaghi et al. Seroprevalence\n") +
+  xlab("") +
+  ggpubr::theme_pubclean() +
+  theme(axis.line = element_line(), panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_line(linetype = "solid", size = 0.25),
+        legend.key = element_rect(fill = "white")) +
+  scale_fill_manual(name = "IFR Source:",
+                    values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red")) +
+  scale_color_manual(name = "IFR Source:",
+                     values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
+save_figs("sero_comp_province_ll", sero_comp_province_ll_gg, width = 6, height = 8)
 
 # ------------------------------------------------------------------------------
 # Investigate per province attack rate by age
