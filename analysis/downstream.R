@@ -280,6 +280,7 @@ hosp_all_comp_plot <- function(provs_central, provs_worst, provs_optimistic) {
   H_dat2 <- left_join(ungroup(H_dat) %>% select(-source), ungroup(H_dat_high)%>% select(-source),
                       by = c("province", "compartment", "date")) %>%
     left_join(ungroup(H_dat_low)%>% select(-source), by = c("province", "compartment", "date")) %>%
+    rowwise() %>%
     mutate(max2 = max(max, min), min2 = min(max, min)) %>% select(-min, -max) %>% rename(max = max2, min = min2)
 
   ggplot(hosps %>%
@@ -366,7 +367,7 @@ national_ar_age_gg <- inf_comp_age  %>%
   ylab("National Attack Rate") +
   xlab("Age Group") +
   scale_y_continuous(labels = scales::percent)
-save_figs("national_ar_age", national_ar_age_gg, width = 6, height = 4)
+
 
 # ------------------------------------------------------------------------------
 # attack rate per wave table
@@ -594,7 +595,7 @@ reinfections_province_gg <- reinfections_dat %>%
   geom_ribbon(alpha = 0.2) +
   theme(axis.title.x = element_blank()) +
   facet_wrap(~province, scales = "free_y", ncol = 4) +
-  ylab("Proportion of Infections due to Reinfections") +
+  ylab("Proportion of Cumulative Infections \ndue to Reinfections") +
   ggpubr::theme_pubclean(base_size = 14) +
   theme(axis.line = element_line(),
         panel.grid.major.x = element_blank(),
@@ -613,7 +614,7 @@ reinfections_national_gg <- reinfections_dat %>%
   geom_line() +
   geom_ribbon(alpha = 0.2) +
   theme(axis.title.x = element_blank()) +
-  ylab("Proportion of Infections due to Reinfections") +
+  ylab("Proportion of Cumulative Infections \ndue to Reinfections") +
   ggpubr::theme_pubclean(base_size = 14) +
   theme(axis.line = element_line(),
         panel.grid.major.x = element_blank(),
@@ -627,6 +628,7 @@ save_figs("reinfections_national", reinfections_national_gg, width = 6, height =
 # Investigate odriscol ifr impact on attack rate by age
 # ------------------------------------------------------------------------------
 
+# get the relationship between the IFRS
 ifr <- (probs$prob_hosp * probs$prob_severe * probs$prob_severe_death_treatment) +
   (probs$prob_hosp * (1-probs$prob_severe) * probs$prob_non_severe_death_treatment)
 
@@ -637,23 +639,128 @@ odriscoll <- c(0.003, 0.001, 0.001, 0.003, 0.006, 0.013,
 infs_final <- inf_comp_age %>% filter(date == max(inf_comp_age$date))
 infs_final$n <- pop_n
 
+# what is the extra death required assuming same attack rate
 curent_deaths_total <- sum(infs_final$max * ifr)
 new_deaths_total <- sum(infs_final$max * odriscoll)
-
 multiplier_of_attack_rate <- curent_deaths_total/new_deaths_total
-infs_final$new_max <- infs_final$max * multiplier_of_attack_rate
 
-ggplot(infs_final, aes(age_group, med/n, ymin = min/n, ymax = max/n)) +
-  geom_point(size = 2) +
-  geom_errorbar(aes(ymax = new_max/n), size = 1, width = 0.4, color = "red") +
+# and get the scale from old IFRs:
+ifr_tbl <- read.csv(cp_path("analysis/tables/province_ifrs.csv"))
+ifr_tbls <- do.call(rbind,lapply(strsplit(gsub("\\[|\\]|\\%|,", "", ifr_tbl$province.ifr), " "), function(x){tail(x, 3)}))
+
+ifr_tbls <- as.data.frame(ifr_tbls) %>% mutate(across(.fns = as.numeric))
+med_scale <- mean(ifr_tbls$V1 / ifr_tbls$V3)
+min_scale <- mean(ifr_tbls$V2 / ifr_tbls$V3)
+
+# create new attack rate curves
+infs_final$new_max <- infs_final$max * multiplier_of_attack_rate
+infs_final$new_med <- infs_final$med * ((multiplier_of_attack_rate-1)*(med_scale)+1)
+infs_final$new_min <- infs_final$min * ((multiplier_of_attack_rate-1)*(min_scale)+1)
+
+final_attack_by_age_comp_gg <- infs_final  %>%
+  pivot_longer(c("med", "max", "min", "new_med", "new_max", "new_min")) %>%
+  mutate(Source = "Brazeau et al.") %>%
+  mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
+  mutate(name = gsub("new_", "", name)) %>%
+  mutate(Source = factor(Source, levels = c("O'Driscoll et al.", "Brazeau et al."))) %>%
+  pivot_wider(values_from = value, names_from = name) %>%
+ggplot(aes(age_group, med/n, ymin = min/n, ymax = max/n, color = Source)) +
+  geom_point( size = 2) +
   geom_errorbar(size = 1, width = 0.4) +
   ggpubr::theme_pubclean(base_size = 14) +
-  theme(axis.line = element_line(), legend.key = element_blank(),
+  theme(axis.line = element_line(),
         axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.major.x = element_blank()) +
   ylab("National Attack Rate") +
   xlab("Age Group") +
+  scale_color_manual(values = c("black", "red"), labels = c("Brazeau et al.", "O'Drsicoll et al.")) +
   scale_y_continuous(labels = scales::percent)
+save_figs("final_attack_by_age_ifr_comp", final_attack_by_age_comp_gg, width = 6, height = 4)
+
+# and now by national over time
+inf_comp$new_med <- ((multiplier_of_attack_rate-1)*(med_scale)+1) * inf_comp$med
+inf_comp$new_max <- multiplier_of_attack_rate * inf_comp$max
+inf_comp$new_min <- ((multiplier_of_attack_rate-1)*(min_scale)+1) * inf_comp$min
+
+national_attack_rate_comp_gg <-
+  inf_comp %>% pivot_longer(med:new_min) %>% mutate(Source = "") %>%
+  mutate(Source = "Brazeau et al.") %>%
+  mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
+  mutate(name = gsub("new_", "", name)) %>%
+  mutate(Source = factor(Source, levels = c("O'Driscoll et al.", "Brazeau et al."))) %>%
+  pivot_wider(values_from = value, names_from = name) %>%
+  ggplot(aes(date, med, ymin = min, ymax = max, color = Source, fill = Source)) +
+  geom_line() +
+  geom_ribbon(alpha = 0.2) +
+  ylab("Cumulative Attack Rate") +
+  xlab("") +
+  ggpubr::theme_pubclean(base_size = 14) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) +
+  scale_y_continuous(labels = scales::percent, limits = c(0,1.4)) +
+  scale_x_date(date_labels = "%b %Y",
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01"))) +
+  scale_fill_manual(name = "IFR Source:",
+                    values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red")) +
+  scale_color_manual(name = "IFR Source:",
+                     values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
+save_figs("national_attack_rate_comp", national_attack_rate_comp_gg, width = 6, height = 4)
+
+# explore sero likelihood of two methods
+inf_comp_province$new_med <- ((multiplier_of_attack_rate-1)*(med_scale)+1) * inf_comp_province$med
+inf_comp_province$new_max <- multiplier_of_attack_rate * inf_comp_province$max
+inf_comp_province$new_min <- ((multiplier_of_attack_rate-1)*(min_scale)+1) * inf_comp_province$min
+
+# create our model seroprevalence data
+inf_comp_province_sero <- group_by(inf_comp_province, province) %>%
+  mutate(across(med:new_min, .fns = ~.x-lag(.x, default = 0))) %>%
+  mutate(across(med:new_min, roll_func, provs_central[[1]]$pmcmc_results$inputs$pars_obs$sero_det))
+
+inf_comp_province_sero <- left_join(
+  inf_comp_province_sero,
+  group_by(demog, province) %>% summarise(n = sum(n))
+  ) %>%
+  mutate(across(med:new_min, .fns = ~.x / n))
+
+# load in teh observed serodata
+sero_dat <- readRDS(cp_path("src/prov_fit/sero.rds"))
+sero_dat <- sero_dat %>% filter(source %in% "Khalagi et al") %>%
+  mutate(province = gsub("Baluchestan", "Baluchistan", province))
+sero_dat2 <- read.csv("analysis/data/raw/khalagi_n.csv")
+sero_dat <- left_join(sero_dat, sero_dat2[,c("province", "samples")])
+sero_dat <- sero_dat %>% mutate(
+  sero_pos = round(sero*samples/100),
+  date_mid = date_start + ((date_end-date_start)/2)
+)
+
+# create our seroprev table for calculation against
+sero_comp_table <- left_join(sero_dat %>% select(province, sero_pos, samples),
+          inf_comp_province_sero %>%
+            filter(date %in% c(sero_dat$date_mid, sero_dat$date_start, sero_dat$date_end)) %>%
+            select(date, province, med, new_med)
+)
+
+sero_comp_table$ll <- dbinom(sero_comp_table$sero_pos, sero_comp_table$samples, sero_comp_table$med, log = TRUE)
+sero_comp_table$ll_new <- dbinom(sero_comp_table$sero_pos, sero_comp_table$samples, sero_comp_table$new_med, log = TRUE)
+
+sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll:ll_new) %>%
+    mutate(name = case_when(name == "ll" ~ "Brazeau et al.",
+                            name == "ll_new" ~ "O'Driscoll et al.")) %>%
+    select(province, date, name, value) %>%
+    pivot_wider(names_from = date, values_from = value) %>%
+    set_names(c("province", "name", "min", "med", "max")) %>%
+    select(-c("min","max")) %>%
+    ggplot(aes(x=-med, color = name, fill = name)) +
+    geom_density(alpha = 0.2) +
+    scale_x_log10() +
+    xlab("Negative Log Likelihood of Model Fit against Khalaghi et al. Seroprevalence") +
+    ggpubr::theme_pubclean() +
+    theme(axis.line = element_line()) +
+    scale_fill_manual(name = "IFR Source:",
+                      values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red")) +
+    scale_color_manual(name = "IFR Source:",
+                       values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
+save_figs("sero_comp_ll", sero_comp_ll_gg, width = 6, height = 4)
 
 # ------------------------------------------------------------------------------
 # Investigate per province attack rate by age
