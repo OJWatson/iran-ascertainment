@@ -11,7 +11,8 @@ fit_spline_rt <- function(data,
                           hosp_beds = 10000000000,
                           icu_beds = 10000000000,
                           vacc_inputs = NULL,
-                          mix_mat = squire::get_mixing_matrix("Iran")
+                          mix_mat = squire::get_mixing_matrix("Iran"),
+                          odriscoll = FALSE
 ) {
 
 
@@ -198,7 +199,17 @@ fit_spline_rt <- function(data,
 
   scaling_factor <- 1
 
+  # pars init for each ifr
   pi <- readRDS("pars_init.rds")
+  if(odriscoll) {
+  if(pars_obs$dur_R >= 180) {
+    pi <- pi$optimistic_odriscoll
+  } else if ((pars_obs$dur_R > 80 && pars_obs$dur_R < 180)) {
+    pi <- pi$central_odriscoll
+  } else {
+    pi <- pi$worst_odriscoll
+  }
+  } else {
   if(pars_obs$dur_R >= 180) {
     pi <- pi$optimistic
   } else if ((pars_obs$dur_R > 80 && pars_obs$dur_R < 180)) {
@@ -206,6 +217,8 @@ fit_spline_rt <- function(data,
   } else {
     pi <- pi$worst
   }
+  }
+
   pf <- pi[[province]]
   pf$start_date <- as.Date(pf$start_date)
   #pf$start_date <- as.Date(start_date)
@@ -217,6 +230,29 @@ fit_spline_rt <- function(data,
   scaling_factor <- 1
   if("scaling_factor" %in% names(pf)) {
     scaling_factor <- as.numeric(pf$scaling_factor)
+  }
+
+  # use correct probs for osriscoll vs brazeau ifr
+  probs <- squire::default_probs()
+  if (odriscoll) {
+
+    # brazeau ifr
+    ifr <- (probs$prob_hosp * probs$prob_severe * probs$prob_severe_death_treatment) +
+      (probs$prob_hosp * (1-probs$prob_severe) * probs$prob_non_severe_death_treatment)
+
+    # from odriscoll paper
+    odriscoll_ifr <- c(0.003, 0.001, 0.001, 0.003, 0.006, 0.013,
+                   0.024, 0.04, 0.075, 0.121, 0.207, 0.323, 0.456,
+                   1.075, 1.674, 3.203, 8.292)/100
+
+    psdt <- (odriscoll_ifr/ifr) * probs$prob_severe_death_treatment
+    pnsdt <- (odriscoll_ifr/ifr) * probs$prob_non_severe_death_treatment
+
+  } else {
+
+    psdt <- probs$prob_severe_death_treatment
+    pnsdt <- probs$prob_non_severe_death_treatment
+
   }
 
   # grab old covariance matrix
@@ -301,7 +337,9 @@ fit_spline_rt <- function(data,
                       baseline_ICU_bed_capacity = icu_beds,
                       scaling_factor = scaling_factor,
                       dur_R = 365,
-                      baseline_contact_matrix = mix_mat
+                      baseline_contact_matrix = mix_mat,
+                      prob_severe_death_treatment = psdt,
+                      prob_non_severe_death_treatment = pnsdt
     )
 
   } else if(model == "NIMUE") {
@@ -355,7 +393,9 @@ fit_spline_rt <- function(data,
                       baseline_vaccine_efficacy_disease = vacc_inputs$vaccine_efficacy_disease[[1]],
                       rel_infectiousness_vaccinated = vacc_inputs$rel_infectiousness_vaccinated,
                       vaccine_coverage_mat = vaccine_coverage_mat,
-                      dur_V = 365
+                      dur_V = 550,
+                      prob_severe_death_treatment = psdt,
+                      prob_non_severe_death_treatment = pnsdt
     )
   }
 

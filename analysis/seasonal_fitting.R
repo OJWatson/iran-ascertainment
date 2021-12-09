@@ -1,3 +1,5 @@
+## DEPRECATED CODE USED FOR VERSION 1 OF THE MANUSCRIPT SUBMIITED TO MEDRXIV
+
 mortality <- readRDS(cp_path("data/derived/mortality.rds"))
 mortality <- mortality %>% group_by(province) %>% mutate(cum_excess = if(cum_excess[1]<0){cum_excess-cum_excess[1]} else {cum_excess})
 

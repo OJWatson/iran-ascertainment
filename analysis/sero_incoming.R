@@ -116,6 +116,9 @@ full_sero <- rbind(
 saveRDS(full_sero, cp_path("analysis/data/derived/sero.rds"))
 saveRDS(full_sero, cp_path("src/prov_fit/sero.rds"))
 
+
+## DEPRECATED CODE USED FOR VERSION 1 OF THE MANUSCRIPT SUBMIITED TO MEDRXIV
+
 # 2. Data Visualisation -----------------------------
 
 library(tidyverse)

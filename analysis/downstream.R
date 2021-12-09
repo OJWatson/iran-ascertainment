@@ -1,4 +1,10 @@
+# ---------------------------------------------
+## STEP 1: Draw from Posterior for model fits
+# ---------------------------------------------
+
+# load package code
 library(tidyverse)
+devtools::load_all(".")
 
 # Group our model fits by their assumptions
 reports_all <- function(task = "prov_fit") {
@@ -92,6 +98,10 @@ names(provs_worst) <- vapply(provs_worst, function(x){x$parameters$province}, ch
 # provs_worst <- readRDS("analysis/data/derived/model_fits_worst.rds")
 # provs_optimistic <- readRDS("analysis/data/derived/model_fits_optimistic.rds")
 
+# ---------------------------------------------
+## STEP 2: Various Downstream Summary Plots
+# ---------------------------------------------
+
 # ------------------------------------------------------------------------------
 # final death plot nationally
 # ------------------------------------------------------------------------------
@@ -144,42 +154,6 @@ final_death_national_gg <- left_join(
   ylab("Final Epidemic Deaths / 100000") +
   xlab("Age Group")
 save_figs("final_death_national", final_death_national_gg, width = 10, height = 8)
-
-# ------------------------------------------------------------------------------
-# PFR plot subnationally COME BACK TO
-# ------------------------------------------------------------------------------
-df <- readRDS(cp_path("analysis/data/derived/iran_deaths_age_province.rds"))
-demog <- readRDS(cp_path("analysis/data/derived/demog.rds"))
-final_death_national_gg <- left_join(
-  do.call(rbind, death_comps) %>%
-    mutate(age_group = rep(squire::population$age_group[1:17], 31)),
-  df %>% filter(province_name != "Iran") %>%
-    group_by(age_group, province_name) %>%
-    summarise(d = sum((excess_deaths_mean)),
-              d_min = sum((excess_deaths_high)),
-              d_max = sum((excess_deaths_low)),
-              dpos = sum(pos(excess_deaths_mean)),
-              dpos_min = sum(pos(excess_deaths_high)),
-              dpos_max = sum(pos(excess_deaths_low))) %>%
-    mutate(province = province_name)
-) %>% pivot_longer(cols = c("med", "d", "d_min", "d_max" ,"dpos", "dpos_min", "dpos_max")) %>%
-  mutate(min = replace(min, name %in% c("d", "d_pos"), NA)) %>%
-  mutate(max = replace(max, name %in% c("d", "d_pos"), NA)) %>%
-  mutate(across(.cols = c("min", "max", "value"),  ~ .x * (100000/as.numeric(mapply(rep, squire::get_population("Iran")$n, 3))))) %>%
-  ggplot(aes(age_group, value, color = name, ymin = min, ymax = max, group = name)) +
-  geom_ribbon(alpha = 0.2) +
-  geom_line(aes(group = name)) +
-  ggpubr::theme_pubclean(base_size = 14) +
-  theme(axis.line = element_line(), legend.key = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1)) +
-  scale_y_log10() +
-  scale_color_discrete(
-    name = "Source:",
-    labels = c("d"="Observed Excess Deaths",
-               "d_pos"="Observed Positive Excess Deaths",
-               "med"="Modelled Deaths")) +
-  ylab("Final Epidemic Deaths / 100000") +
-  xlab("Age Group")
-save_figs("final_death_national", final_death_national_gg, width = 8, height = 8)
 
 # ------------------------------------------------------------------------------
 # attack rate nationally plot
@@ -625,7 +599,7 @@ reinfections_national_gg <- reinfections_dat %>%
 save_figs("reinfections_national", reinfections_national_gg, width = 6, height = 4)
 
 # ------------------------------------------------------------------------------
-# Investigate odriscol ifr impact on attack rate by age
+# O'driscol ifr impact on attack rate by age
 # ------------------------------------------------------------------------------
 
 # get the relationship between the IFRS
@@ -789,7 +763,7 @@ sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_ne
 save_figs("sero_comp_province_ll", sero_comp_province_ll_gg, width = 6, height = 8)
 
 # ------------------------------------------------------------------------------
-# Investigate per province attack rate by age
+# Code for plotting per province attack rate by age
 # ------------------------------------------------------------------------------
 
 prov <- names(provs_central)[15]

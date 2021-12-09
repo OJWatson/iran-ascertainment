@@ -1,5 +1,7 @@
 library(tidyverse)
 
+## DEPRECATED CODE USED FOR VERSION 1 OF THE MANUSCRIPT SUBMIITED TO MEDRXIV
+
 # ------------------------------------------------------------
 # 1. Get the raw data
 # ------------------------------------------------------------

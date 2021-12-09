@@ -90,7 +90,8 @@ res <- fit_spline_rt(data = deaths,
                      pars_obs_dur_R = as.numeric(dur_R),
                      pars_obs_prob_hosp_multiplier = as.numeric(prob_hosp_multiplier),
                      vacc_inputs = vacc_inputs,
-                     mix_mat = squire::contact_matrices[[as.integer(mix_mat)]]
+                     mix_mat = squire::contact_matrices[[as.integer(mix_mat)]],
+                     odriscoll = as.logical(odriscoll)
                      )
 
 

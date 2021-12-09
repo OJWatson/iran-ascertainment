@@ -51,6 +51,8 @@ parameters:
     mix_mat:
       default: 12
     date: ~
+    odriscoll:
+      default: FALSE
 
 
 # You must list at least one artefact that your report will generate.
