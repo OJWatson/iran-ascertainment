@@ -4,3 +4,6 @@
 .Ruserdata
 context
 draft
+analysis/data/derived/model_fits_central.rds
+analysis/data/derived/model_fits_optimistic.rds
+analysis/data/derived/model_fits_worst.rds
