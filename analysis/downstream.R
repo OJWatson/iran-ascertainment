@@ -293,6 +293,128 @@ hosp_all_comp_plot <- function(provs_central, provs_worst, provs_optimistic) {
 hosp_all_gg <- hosp_all_comp_plot(provs_central, provs_worst, provs_optimistic)
 save_figs("hosp_all", hosp_all_gg, width = 12, height = 16)
 
+# ------------------------------------------------------------------------------
+# hospital comparison effects plot
+# ------------------------------------------------------------------------------
+
+# get the hospitalisations observed
+hosps <- readRDS("analysis/data/derived/hospitalisations.rds")
+prov <- "Kohgiluyeh and Boyer-Ahmad"
+hosps <- hosps %>% mutate(province = replace(province, which(province == "Kohgiluyeh and Boyer Ahmad"), "Kohgiluyeh and Boyer-Ahmad"))
+hosps <- hosps %>% mutate(province = replace(province, which(province == "Yaz"), "Yazd"))
+hosps <- hosps %>% pivot_wider(values_from = hosp, names_from = type) %>%
+  group_by(province) %>%
+  mutate(date2 = as.integer(date)) %>%
+  mutate(date3 = seq_len(n())+date2[1]-1) %>%
+  mutate(date4 = lubridate::as_date(date3)) %>%
+  select(province, confirmed, suspected, date4) %>%
+  rename(date = date4)
+
+# get the central modelled hospitalisations
+date_0 <- max(provs_central[[1]]$pmcmc_results$inputs$data$date)
+
+# H for central
+H <- lapply(provs_central, nim_sq_format, c("hospitalisations"), date_0 = date_0)
+for(i in seq_along(H)) {
+  H[[i]]$province <- names(provs_central)[i]
+  H[[i]]$source <- "med"
+}
+
+H_dat <- do.call(rbind, H) %>%
+  group_by(replicate, t, date, province, compartment, source) %>%
+  summarise(y = sum(y, na.rm=TRUE)) %>%
+  group_by(province, compartment, date, source) %>%
+  summarise(across(y, .fns = list(
+    med =~ quantile(y, 0.5, na.rm = TRUE)
+  ),.names = "{.fn}"))
+
+# join with our hosp data
+all_hosp <- left_join(H_dat, hosps)
+
+wave_breaks <- as.Date(c("2020-06-01", "2020-08-01", "2021-02-01","2021-07-01"))
+mod_vs_hosp_gg <- all_hosp %>% mutate(mdc = med/confirmed, mds = med/suspected) %>%
+  pivot_longer(mdc:mds) %>%
+  filter(date > "2020-02-20") %>%
+  ggplot(aes(date, value, color = name)) +
+  geom_vline(xintercept = wave_breaks, linetype = "dashed") +
+  geom_line() +
+  facet_wrap(~province, scales = "free_y", ncol = 4) +
+  scale_y_log10() +
+  ggpubr::theme_pubclean(base_size = 14) +
+  scale_color_manual(name = "",
+                     values = c("mdc"="black", "mds"="red"),
+                     labels = c("Confirmed COVID-19 Hospitalisations", "Suspected COVID-19 Hospitalisations")) +
+  theme(axis.line = element_line(), legend.key = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_line(linetype = "solid", size = 0.25)) +
+  ylab("Modelled Daily Hospitalisations / Observed Hospitalisations") +
+  xlab("") +
+  scale_x_date(date_labels = "%b %Y", breaks = wave_breaks)
+save_figs("mod_vs_hosp", mod_vs_hosp_gg, width = 12, height = 16)
+
+## Investigate a wave specific effect controlling for province differneces
+
+mod_dat <- all_hosp %>% mutate(mdc = med/confirmed, mds = med/suspected) %>%
+  filter(date > "2020-02-20") # start of hosp data
+
+# assign wave period
+wave_breaks <- as.Date(c("2020-06-01", "2020-08-01", "2021-02-01","2021-07-01"))
+mod_dat <- mod_dat %>% mutate(
+  Wave = case_when(date >= as.Date("2018-01-01") & date < wave_breaks[1] ~ "Wave 1",
+                   date >= wave_breaks[1] & date < wave_breaks[2] ~ "Wave 2",
+                   date >= wave_breaks[2] & date < wave_breaks[3] ~ "Wave 3",
+                   date >= wave_breaks[3] & date < wave_breaks[4] ~ "Wave 4",
+                   date >= wave_breaks[4] ~ "Wave 5"))
+
+# order model components
+mod_dat$Wave <- relevel(factor(mod_dat$Wave), ref = "Wave 5")
+mod_dat$Month <- as.integer(round((mod_dat$date - min(mod_dat$date))/30))
+
+# build model
+wave_mod <- lme4::lmer(mdc ~ Wave + Month + (1+Month|province),
+                       data = mod_dat[is.finite(mod_dat$mdc),],
+                       control=lmerControl(optimizer="bobyqa",
+                                           optCtrl=list(maxfun=1e6)))
+
+# plot fixed effects
+ggeffs <- sjPlot::plot_model(wave_mod, sort.est = FALSE, show.values = TRUE,
+                             value.offset = .1, axis.labels = "",
+                             vline.color = "grey", title = "") +
+  theme_sjplot2() +
+  ylab("Fixed effects of epidemic wave and month since start of pandemic")
+ggeffs$layers[[1]]$aes_params$size <-  0.5
+ggeffs <- ggeffs + theme(plot.background = element_rect(fill = "white", color = "white"))
+
+# plot random effects
+ggreffs <- sjPlot::plot_model(wave_mod, type = "re",
+                              sort.est = FALSE,
+                              grid = FALSE,
+                              show.values = TRUE,
+                              value.offset = .45, value.size = 3,
+                              vline.color = "grey", title = "")
+ggreffs <- lapply(ggreffs, function(x){
+  x <- x + theme_sjplot2() +
+  theme(plot.title = element_blank())
+  x$data$term <- factor(
+    x$data$term,
+    levels = ggreffs[[2]]$data$term[order(ggreffs[[2]]$data$estimate)]
+  )
+  x
+})
+
+ggreffs[[1]] <- ggreffs[[1]] + ylab("Random Slope Effect Size")
+ggreffs[[2]] <- ggreffs[[2]] + ylab("Random Intercept Effect Size")
+ggreffs[[2]] <- ggreffs[[2]] + theme(axis.text.y = element_blank())
+ggreffs[[2]] <- ggreffs[[2]] + theme(axis.line.y = element_blank())
+ggreffs <- cowplot::plot_grid(plotlist = ggreffs, ncol = 2)
+
+ggreffs <- ggreffs + theme(plot.background = element_rect(fill = "white", color = "white"))
+
+# combine
+hosp_eff_gg <- cowplot::plot_grid(ggeffs, ggreffs, rel_widths = c(0.4, 0.6), labels = "auto")
+save_figs("mod_vs_hosp_effects", hosp_eff_gg, width = 15, height = 8)
+
 
 # ------------------------------------------------------------------------------
 # attack rate per age
@@ -325,6 +447,7 @@ inf_comp_age <- left_join(
               summarise(infs = sum(infections, na.rm = TRUE)) %>%
               group_by(date, age_group) %>%
               summarise(max = median(infs)))
+
 
 national_ar_age_gg <- inf_comp_age  %>%
   mutate(age_group = factor(age_group, levels = S_tot$age_group)) %>%
