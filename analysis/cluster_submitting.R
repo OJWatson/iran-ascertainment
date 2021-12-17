@@ -4,7 +4,7 @@
 ## -----------------------------------------------------------------------------
 
 # how long is the mcmc for
-n_mcmc <- 20000
+n_mcmc <- 50000
 
 # should tasks be run in parallel and use multiple chains.
 # leave this as FALSE and see FAQs for more info on this
@@ -14,6 +14,7 @@ rf <- 1
 date <- "2021-10-29"
 mix_mat <- rep(10, 31)
 mix_mat[c(3,11,12,13,23,24,31)] <- 12
+odriscoll <- TRUE
 
 # get the states
 provinces <- c(
@@ -45,9 +46,9 @@ hosp_capacity_multiplier <- c(0.5, 1, 10)
 
 # make the orderly bundles to be run on the cluster
 path_bundles <- c(
-  cp_path("analysis/orderly_bundles/raw_vaccine_complete_worst"),
-  cp_path("analysis/orderly_bundles/raw_vaccine_complete_central"),
-  cp_path("analysis/orderly_bundles/raw_vaccine_complete_best")
+  cp_path("analysis/orderly_bundles/raw_vaccine_new_odriscoll_worst"),
+  cp_path("analysis/orderly_bundles/raw_vaccine_new_odriscoll_central"),
+  cp_path("analysis/orderly_bundles/raw_vaccine_new_odriscoll_best")
 )
 
 for(i in 1:3) {
@@ -69,7 +70,8 @@ for(i in 1:3) {
           hosp_capacity_multiplier=hosp_capacity_multiplier[i],
           n_mcmc=n_mcmc,
           date=date,
-          mix_mat=mix_mat[x]
+          mix_mat=mix_mat[x],
+          odriscoll=odriscoll
         )
       )
     }
@@ -164,9 +166,9 @@ return(grp)
 
 }
 
-grp_worst <- submit_jobs(cp_path("analysis/orderly_bundles/raw_vaccine_complete_worst"))
-grp_central <- submit_jobs(cp_path("analysis/orderly_bundles/raw_vaccine_complete_central"))
-grp_best <- submit_jobs(cp_path("analysis/orderly_bundles/raw_vaccine_complete_best"))
+grp_worst <- submit_jobs(path_bundles[1])
+grp_central <- submit_jobs(path_bundles[2])
+grp_best <- submit_jobs(path_bundles[3])
 
 ## ------------------------------------
 ## 4. Check on our jobs

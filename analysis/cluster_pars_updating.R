@@ -84,6 +84,11 @@ pars_init$optimistic[match(names(pars_list_best), names(pars_init$optimistic))] 
 pars_init$central[match(names(pars_list_central), names(pars_init$central))] <- pars_list_central
 pars_init$worst[match(names(pars_list_worst), names(pars_init$worst))] <- pars_list_worst
 
+pars_init$optimistic_odriscoll[match(names(pars_list_best), names(pars_init$optimistic_odriscoll))] <- pars_list_best
+pars_init$central_odriscoll[match(names(pars_list_central), names(pars_init$central_odriscoll))] <- pars_list_central
+pars_init$worst_odriscoll[match(names(pars_list_worst), names(pars_init$worst_odriscoll))] <- pars_list_worst
+
+
 # save to location
 saveRDS(pars_init, file.path(here::here(), "src/prov_fit/pars_init.rds"))
 
@@ -180,123 +185,11 @@ fix_ll <- function(res, pars, min = 0.5, max = 2, n_span = 8) {
 }
 
 # --------------------------
-## tehran best
-# --------------------------
-
-res <- fetch_res(grp_best, 8)
-pars <- res$pmcmc_results$results[20001,]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars, 0.95, 1.15, 4)
-plot_pars_deaths(res, pars_new)
-
-pars_init$optimistic$Tehran[seq_len(length(pars)-3)] <- head(as.numeric(pars_new[1,]), -3)
-pars_init$optimistic$Tehran$start_date <- lubridate::as_date(pars_init$optimistic$Tehran$start_date)
-
-# --------------------------
-## EA central
-# --------------------------
-
-res <- fetch_res(grp_central, 1)
-pars <- res$pmcmc_results$results[20001,]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars)
-plot_pars_deaths(res, pars_new)
-
-pars_init$central$`East Azerbaijan`[seq_len(length(pars)-3)] <- head(as.numeric(pars_new3[1,]), -3)
-pars_init$central$`East Azerbaijan`$start_date <- lubridate::as_date(pars_init$central$`East Azerbaijan`$start_date)
-
-# --------------------------
-## RK central
-# --------------------------
-
-res <- fetch_res(grp_central, 11)
-pars <- res$pmcmc_results$results[which.max(res$pmcmc_results$results$log_posterior),]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars)
-plot_pars_deaths(res, pars_new)
-
-pars_init$central$`Razavi Khorasan`[seq_len(length(pars)-3)] <- head(as.numeric(pars_new[1,]), -3)
-pars_init$central$`Razavi Khorasan`$start_date <- lubridate::as_date(pars_init$central$`Razavi Khorasan`$start_date)
-
-# --------------------------
-## Tehran central
-# --------------------------
-
-res <- fetch_res(grp_central, 8)
-pars <- res$pmcmc_results$results[which.max(res$pmcmc_results$results$log_posterior),]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars)
-plot_pars_deaths(res, pars_new)
-
-pars_init$central$Tehran[seq_len(length(pars)-3)] <- head(as.numeric(pars_new[1,]), -3)
-pars_init$central$Tehran$start_date <- lubridate::as_date(pars_init$central$Tehran$start_date)
-
-# --------------------------
-## EA worst
-# --------------------------
-
-res <- fetch_res(grp_worst, 1)
-pars <- res$pmcmc_results$results[which.max(res$pmcmc_results$results$log_posterior),]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars)
-plot_pars_deaths(res, pars_new)
-pars_new2 <- fix_ll(res, pars_new, 0.75, 1.5, 6)
-plot_pars_deaths(res, pars_new2)
-pars_new3 <- fix_ll(res, pars_new2, 0.95, 1.1, 6)
-plot_pars_deaths(res, pars_new3)
-
-pars_init$worst$`East Azerbaijan`[seq_len(length(pars)-3)] <- head(as.numeric(pars_new3[1,]), -3)
-pars_init$worst$`East Azerbaijan`$start_date <- lubridate::as_date(pars_init$worst$`East Azerbaijan`$start_date)
-
-# --------------------------
-## Tehran worst
-# --------------------------
-
-res <- fetch_res(grp_worst, 8)
-pars <- res$pmcmc_results$results[which.max(res$pmcmc_results$results$log_posterior),]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars)
-plot_pars_deaths(res, pars_new)
-pars_new3 <- fix_ll(res, pars_new2, 0.9, 1.2)
-plot_pars_deaths(res, pars_new3)
-
-pars_init$worst$Tehran[seq_len(length(pars)-3)] <- head(as.numeric(pars_new3[1,]), -3)
-pars_init$worst$Tehran$start_date <- lubridate::as_date(pars_init$worst$Tehran$start_date)
-
-# --------------------------
-## WA worst
-# --------------------------
-
-res <- fetch_res(grp_worst, 2)
-pars <- res$pmcmc_results$results[which.max(res$pmcmc_results$results$log_posterior),]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-
-plot_pars_deaths(res, pars)
-pars_new <- fix_ll(res, pars, min = 0.5, 0.5, n_span = 10)
-plot_pars_deaths(res, pars_new)
-
-
-pars_init$worst$`West Azerbaijan`[seq_len(length(pars)-3)] <- head(as.numeric(pars_new[1,]), -3)
-pars_init$worst$`West Azerbaijan`$start_date <- lubridate::as_date(pars_init$worst$`West Azerbaijan`$start_date)
-
-# --------------------------
-## RK worst
+## EA best
 # --------------------------
 
 
-res <- fetch_res(grp_worst, 11)
+res <- fetch_res(grp_best, 1)
 pars <- res$pmcmc_results$results[which.max(res$pmcmc_results$results$log_posterior),]
 pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
 
