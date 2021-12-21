@@ -34,20 +34,22 @@ reports_here <- reports_all()
 reports_here$scenario <- "Central"
 reports_here$scenario[reports_here$dur_R == "222"] <- "Optimistic"
 reports_here$scenario[reports_here$dur_R == "70"] <- "Worst"
+reports_base <- reports_here[is.na(reports_here$odriscoll), ]
+reports_odriscoll <- reports_here[which(reports_here$odriscoll == "true"), ]
 
 # Get the model fits for each scenario
 ls <- list.files("archive", full.names = TRUE, recursive = TRUE)
 
 central_rds <- vapply(
-  reports_here$report_version[reports_here$scenario == "Central"],
+  reports_base$report_version[reports_base$scenario == "Central"],
   grep, character(1), grep("res.rds", ls, value = TRUE), value = TRUE
 )
 worst_rds <- vapply(
-  reports_here$report_version[reports_here$scenario == "Worst"],
+  reports_base$report_version[reports_base$scenario == "Worst"],
   grep, character(1), grep("res.rds", ls, value = TRUE), value = TRUE
 )
 optimistic_rds <- vapply(
-  reports_here$report_version[reports_here$scenario == "Optimistic"],
+  reports_base$report_version[reports_base$scenario == "Optimistic"],
   grep, character(1), grep("res.rds", ls, value = TRUE), value = TRUE
 )
 
@@ -85,18 +87,75 @@ names(provs_central) <- vapply(provs_central, function(x){x$parameters$province}
 names(provs_optimistic) <- vapply(provs_optimistic, function(x){x$parameters$province}, character(1))
 names(provs_worst) <- vapply(provs_worst, function(x){x$parameters$province}, character(1))
 
-# uncomment these if memory being an issue
+# these commented for memory issues/ease
 
 # saveRDS(provs_central, "analysis/data/derived/model_fits_central.rds")
 # saveRDS(provs_worst, "analysis/data/derived/model_fits_worst.rds")
 # saveRDS(provs_optimistic, "analysis/data/derived/model_fits_optimistic.rds")
 
+# and the odriscoll
+
+central_odrsicoll_rds <- vapply(
+  reports_odriscoll$report_version[reports_odriscoll$scenario == "Central"],
+  grep, character(1), grep("res.rds", ls, value = TRUE), value = TRUE
+)
+worst_odrsicoll_rds <- vapply(
+  reports_odriscoll$report_version[reports_odriscoll$scenario == "Worst"],
+  grep, character(1), grep("res.rds", ls, value = TRUE), value = TRUE
+)
+optimistic_odrsicoll_rds <- vapply(
+  reports_odriscoll$report_version[reports_odriscoll$scenario == "Optimistic"],
+  grep, character(1), grep("res.rds", ls, value = TRUE), value = TRUE
+)
+
+
+provs_odriscoll_central <- parallel::mclapply(central_odrsicoll_rds, function(x) {
+  x <- readRDS(x)
+  generate_draws(
+    x,
+    pars_list = lapply(generate_parameters(x, draws = 10, ll = FALSE, burnin = 10000),
+                       function(x) {x[-1] <- x[-1]*runif(length(x)-1, 0.985, 1.005); x}
+    ),
+    parallel = FALSE)
+}, mc.cores = 16, mc.cleanup = TRUE)
+names(provs_odriscoll_central) <- vapply(provs_odriscoll_central, function(x){x$parameters$province}, character(1))
+saveRDS(provs_odriscoll_central, "analysis/data/derived/model_fits_odriscoll_central.rds")
+
+provs_odriscoll_optimistic <- parallel::mclapply(worst_odrsicoll_rds, function(x) {
+  x <- readRDS(x)
+  generate_draws(
+    x,
+    pars_list = lapply(generate_parameters(x, draws = 10, ll = FALSE, burnin = 10000),
+                       function(x) {x[-1] <- x[-1]*runif(length(x)-1, 0.985, 1.005); x}
+    ),
+    parallel = FALSE)
+}, mc.cores = 16, mc.cleanup = TRUE)
+names(provs_odriscoll_optimistic) <- vapply(provs_odriscoll_optimistic, function(x){x$parameters$province}, character(1))
+saveRDS(provs_odriscoll_optimistic, "analysis/data/derived/model_fits_odriscoll_optimistic.rds")
+
+provs_odriscoll_worst <- parallel::mclapply(optimistic_odrsicoll_rds, function(x) {
+  x <- readRDS(x)
+  generate_draws(
+    x,
+    pars_list = lapply(generate_parameters(x, draws = 10, ll = FALSE, burnin = 10000),
+                       function(x) {x[-1] <- x[-1]*runif(length(x)-1, 0.985, 1.005); x}
+    ),
+    parallel = FALSE)
+}, mc.cores = 16)
+names(provs_odriscoll_worst) <- vapply(provs_odriscoll_worst, function(x){x$parameters$province}, character(1))
+saveRDS(provs_odriscoll_worst, "analysis/data/derived/model_fits_odriscoll_worst.rds")
+
+# uncomment these if memory being an issue
 
 # read in data
 
-# provs_central <- readRDS("analysis/data/derived/model_fits_central.rds")
-# provs_worst <- readRDS("analysis/data/derived/model_fits_worst.rds")
-# provs_optimistic <- readRDS("analysis/data/derived/model_fits_optimistic.rds")
+provs_odriscoll_central <- readRDS("analysis/data/derived/model_fits_odriscoll_central.rds")
+provs_odriscoll_worst <- readRDS("analysis/data/derived/model_fits_odriscoll_worst.rds")
+provs_odriscoll_optimistic <- readRDS("analysis/data/derived/model_fits_odriscoll_optimistic.rds")
+
+provs_central <- readRDS("analysis/data/derived/model_fits_central.rds")
+provs_worst <- readRDS("analysis/data/derived/model_fits_worst.rds")
+provs_optimistic <- readRDS("analysis/data/derived/model_fits_optimistic.rds")
 
 # ---------------------------------------------
 ## STEP 2: Various Downstream Summary Plots
@@ -722,7 +781,7 @@ reinfections_national_gg <- reinfections_dat %>%
 save_figs("reinfections_national", reinfections_national_gg, width = 6, height = 4)
 
 # ------------------------------------------------------------------------------
-# O'driscol ifr impact on attack rate by age
+# O'driscol ifr impact on attack rate by age simple version
 # ------------------------------------------------------------------------------
 
 # get the relationship between the IFRS
@@ -761,16 +820,18 @@ final_attack_by_age_comp_gg <- infs_final  %>%
   mutate(name = gsub("new_", "", name)) %>%
   mutate(Source = factor(Source, levels = c("O'Driscoll et al.", "Brazeau et al."))) %>%
   pivot_wider(values_from = value, names_from = name) %>%
-ggplot(aes(age_group, med/n, ymin = min/n, ymax = max/n, color = Source)) +
+  ggplot(aes(age_group, med/n, ymin = min/n, ymax = max/n, color = Source)) +
   geom_point( size = 2) +
   geom_errorbar(size = 1, width = 0.4) +
+  geom_point( size = 2) +
+  geom_errorbar(size = 1, width = 0.4, data = . %>% filter(Source == "Brazeau et al.")) +
   ggpubr::theme_pubclean(base_size = 14) +
   theme(axis.line = element_line(),
         axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.major.x = element_blank()) +
   ylab("National Attack Rate") +
   xlab("Age Group") +
-  scale_color_manual(values = c("black", "red"), labels = c("Brazeau et al.", "O'Drsicoll et al.")) +
+  scale_color_manual(values = c("red", "black"), labels = c("O'Driscoll et al.", "Brazeau et al.")) +
   scale_y_continuous(labels = scales::percent)
 save_figs("final_attack_by_age_ifr_comp", final_attack_by_age_comp_gg, width = 6, height = 4)
 
@@ -884,6 +945,215 @@ sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_ne
   scale_color_manual(name = "IFR Source:",
                      values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
 save_figs("sero_comp_province_ll", sero_comp_province_ll_gg, width = 6, height = 8)
+
+# ------------------------------------------------------------------------------
+# O'driscol ifr impact on attack rate by age from fits version
+# ------------------------------------------------------------------------------
+
+inf_comp_age_odriscoll_central <-  pbapply::pblapply(provs_odriscoll_central, infs_over_time_age)
+inf_comp_age_odriscoll_worst <-  pbapply::pblapply(provs_odriscoll_worst, infs_over_time_age)
+inf_comp_age_odriscoll_optimistic <-  pbapply::pblapply(provs_odriscoll_optimistic, infs_over_time_age)
+
+demog <- readRDS(cp_path("analysis/data/derived/demog.rds"))
+pop_n <- demog %>% mutate(age_group = factor(age_group, levels = age_group[1:17])) %>%
+  group_by(age_group) %>% summarise(n = sum(n)) %>% pull(n)
+
+S_tot <- data.frame("pop" = pop_n,
+                    "age_group" = levels(inf_comp_age_odriscoll_central[[1]]$age_group))
+
+inf_comp_odriscoll_age <- left_join(
+  do.call(rbind, inf_comp_age_odriscoll_central) %>%
+    group_by(date, replicate, age_group) %>%
+    summarise(infs = sum(infections, na.rm = TRUE)) %>%
+    group_by(date, age_group) %>%
+    summarise(new_med = median(infs)),
+  do.call(rbind, inf_comp_age_odriscoll_worst) %>%
+    group_by(date, replicate, age_group) %>%
+    summarise(infs = sum(infections, na.rm = TRUE)) %>%
+    group_by(date, age_group) %>%
+    summarise(new_min = median(infs))) %>%
+  left_join(do.call(rbind, inf_comp_age_odriscoll_optimistic) %>%
+              group_by(date, replicate, age_group) %>%
+              summarise(infs = sum(infections, na.rm = TRUE)) %>%
+              group_by(date, age_group) %>%
+              summarise(new_max = median(infs))) %>%
+  na.omit()
+
+infs_final <- inf_comp_age %>% filter(date == max(inf_comp_age$date))
+infs_final$n <- pop_n
+infs_final <- left_join(infs_final, inf_comp_odriscoll_age %>% filter(date == max(inf_comp_odriscoll_age$date)) %>% mutate(n = pop_n))
+
+final_attack_by_age_comp_gg <- infs_final  %>%
+  pivot_longer(c("med", "max", "min", "new_med", "new_max", "new_min")) %>%
+  mutate(Source = "Brazeau et al.") %>%
+  mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
+  mutate(name = gsub("new_", "", name)) %>%
+  mutate(Source = factor(Source, levels = c("O'Driscoll et al.", "Brazeau et al."))) %>%
+  pivot_wider(values_from = value, names_from = name) %>%
+  ggplot(aes(age_group, med/n, ymin = min/n, ymax = max/n, color = Source)) +
+  geom_point( size = 2) +
+  geom_errorbar(size = 1, width = 0.4) +
+  geom_point( size = 2) +
+  geom_errorbar(size = 1, width = 0.4, data = . %>% filter(Source == "Brazeau et al.")) +
+  ggpubr::theme_pubclean(base_size = 14) +
+  theme(axis.line = element_line(),
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major.x = element_blank()) +
+  ylab("National Attack Rate") +
+  xlab("Age Group") +
+  scale_color_manual(values = c("red", "black"), labels = c("O'Driscoll et al.", "Brazeau et al.")) +
+  scale_y_continuous(labels = scales::percent)
+save_figs("final_attack_by_age_ifr_comp", final_attack_by_age_comp_gg, width = 6, height = 4)
+
+# and now by national over time
+inf_comp_odriscoll_central <-  pbapply::pblapply(provs_odriscoll_central, infs_over_time)
+inf_comp_odriscoll_worst <-  pbapply::pblapply(provs_odriscoll_worst, infs_over_time)
+inf_comp_odriscoll_optimistic <-  pbapply::pblapply(provs_odriscoll_optimistic, infs_over_time)
+demog <- readRDS(cp_path("analysis/data/derived/demog.rds"))
+pop_n <- demog %>% mutate(age_group = factor(age_group, levels = age_group[1:17])) %>%
+  group_by(age_group) %>% summarise(n = sum(n)) %>% pull(n)
+
+inf_odriscoll_comp <- left_join(
+  do.call(rbind, inf_comp_odriscoll_central) %>%
+    group_by(date, replicate) %>%
+    summarise(infs = sum(infections, na.rm = TRUE)) %>%
+    group_by(date) %>%
+    summarise(new_med = median(infs)),
+  do.call(rbind, inf_comp_odriscoll_worst) %>%
+    group_by(date, replicate) %>%
+    summarise(infs = sum(infections, na.rm = TRUE)) %>%
+    group_by(date) %>%
+    summarise(new_min = median(infs))) %>%
+  left_join(do.call(rbind, inf_comp_odriscoll_optimistic) %>%
+              group_by(date, replicate) %>%
+              summarise(infs = sum(infections, na.rm = TRUE)) %>%
+              group_by(date) %>%
+              summarise(new_max = median(infs)))  %>%
+  mutate(across(new_med:new_max, ~.x/sum(pop_n)))
+
+inf_comp <- left_join(inf_comp, inf_odriscoll_comp)
+
+national_attack_rate_comp_gg <-
+  inf_comp %>% pivot_longer(med:new_min) %>% mutate(Source = "") %>%
+  mutate(Source = "Brazeau et al.") %>%
+  mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
+  mutate(name = gsub("new_", "", name)) %>%
+  mutate(Source = factor(Source, levels = c("O'Driscoll et al.", "Brazeau et al."))) %>%
+  pivot_wider(values_from = value, names_from = name) %>%
+  ggplot(aes(date, med, ymin = min, ymax = max, color = Source, fill = Source)) +
+  geom_line() +
+  geom_ribbon(alpha = 0.2) +
+  ylab("Cumulative Attack Rate") +
+  xlab("") +
+  ggpubr::theme_pubclean(base_size = 14) +
+  theme(axis.line = element_line(),
+        panel.grid.major.x = element_blank()) +
+  scale_y_continuous(labels = scales::percent, limits = c(0,1.4)) +
+  scale_x_date(date_labels = "%b %Y",
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01"))) +
+  scale_fill_manual(name = "IFR Source:",
+                    values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red")) +
+  scale_color_manual(name = "IFR Source:",
+                     values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
+save_figs("national_attack_rate_comp", national_attack_rate_comp_gg, width = 6, height = 4)
+
+# explore sero likelihood of two methods
+inf_comp_odriscoll_province <- left_join(
+  do.call(rbind, inf_comp_odriscoll_central) %>%
+    group_by(date, replicate, province) %>%
+    summarise(infs = sum(infections, na.rm = TRUE)) %>%
+    group_by(date, province) %>%
+    summarise(new_med = median(infs)),
+  do.call(rbind, inf_comp_odriscoll_worst) %>%
+    group_by(date, replicate, province) %>%
+    summarise(infs = sum(infections, na.rm = TRUE)) %>%
+    group_by(date, province) %>%
+    summarise(new_min = median(infs))) %>%
+  left_join(do.call(rbind, inf_comp_odriscoll_optimistic) %>%
+              group_by(date, replicate, province) %>%
+              summarise(infs = sum(infections, na.rm = TRUE)) %>%
+              group_by(date, province) %>%
+              summarise(new_max = median(infs)))
+
+inf_comp_province <- left_join(inf_comp_province, inf_comp_odriscoll_province)
+
+# create our model seroprevalence data
+inf_comp_province_sero <- group_by(inf_comp_province, province) %>%
+  mutate(across(med:new_min, .fns = ~.x-lag(.x, default = 0))) %>%
+  mutate(across(med:new_min, roll_func, provs_central[[1]]$pmcmc_results$inputs$pars_obs$sero_det))
+
+inf_comp_province_sero <- left_join(
+  inf_comp_province_sero,
+  group_by(demog, province) %>% summarise(n = sum(n))
+) %>%
+  mutate(across(med:new_min, .fns = ~.x / n))
+
+# load in teh observed serodata
+sero_dat <- readRDS(cp_path("src/prov_fit/sero.rds"))
+sero_dat <- sero_dat %>% filter(source %in% "Khalagi et al") %>%
+  mutate(province = gsub("Baluchestan", "Baluchistan", province))
+sero_dat2 <- read.csv("analysis/data/raw/khalagi_n.csv")
+sero_dat <- left_join(sero_dat, sero_dat2[,c("province", "samples")])
+sero_dat <- sero_dat %>% mutate(
+  sero_pos = round(sero*samples/100),
+  date_mid = date_start + ((date_end-date_start)/2)
+)
+
+# create our seroprev table for calculation against
+sero_comp_table <- left_join(sero_dat %>% select(province, sero_pos, samples),
+                             inf_comp_province_sero %>%
+                               filter(date %in% c(sero_dat$date_mid, sero_dat$date_start, sero_dat$date_end)) %>%
+                               select(date:new_min)
+)
+
+sero_comp_table <- mutate(
+  sero_comp_table,
+  across(med:new_min, .fns = ~ dbinom(sero_pos, samples, .x, log = TRUE), .names = "ll_{.col}")
+)
+
+# median lls across all provinces
+sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = c("ll_med","ll_new_med")) %>%
+  mutate(name = case_when(name == "ll_med" ~ "Brazeau et al.",
+                          name == "ll_new_med" ~ "O'Driscoll et al.")) %>%
+  select(province, date, name, value) %>%
+  pivot_wider(names_from = date, values_from = value) %>%
+  set_names(c("province", "name", "min", "med", "max")) %>%
+  select(-c("min","max")) %>%
+  ggplot(aes(x=-med, color = name, fill = name)) +
+  geom_density(alpha = 0.2) +
+  scale_x_log10() +
+  xlab("Negative Log Likelihood of Model Fit against Khalaghi et al. Seroprevalence") +
+  ggpubr::theme_pubclean() +
+  theme(axis.line = element_line()) +
+  scale_fill_manual(name = "IFR Source:",
+                    values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red")) +
+  scale_color_manual(name = "IFR Source:",
+                     values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
+save_figs("sero_comp_ll", sero_comp_ll_gg, width = 6, height = 4)
+
+sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_new_min) %>%
+  mutate(Source = "Brazeau et al.") %>%
+  mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
+  mutate(name = gsub("(ll.*)_(m.*)", "\\2", name)) %>%
+  filter(date == as.Date("2020-09-16")) %>%
+  select(province, Source, name, value) %>%
+  pivot_wider(names_from = name, values_from = value) %>%
+  ggplot(aes(y=-med, ymin=-min, ymax=-max, color = Source, x = province)) +
+  geom_errorbar(position = position_dodge(width = 0.5), width = 0.4) +
+  scale_y_log10() +
+  coord_flip() +
+  ylab("Negative Log Likelihood of Model Fit \nagainst Khalaghi et al. Seroprevalence\n") +
+  xlab("") +
+  ggpubr::theme_pubclean() +
+  theme(axis.line = element_line(), panel.grid.major.x = element_blank(),
+        panel.grid.major.y = element_line(linetype = "solid", size = 0.25),
+        legend.key = element_rect(fill = "white")) +
+  scale_fill_manual(name = "IFR Source:",
+                    values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red")) +
+  scale_color_manual(name = "IFR Source:",
+                     values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
+save_figs("sero_comp_province_ll", sero_comp_province_ll_gg, width = 6, height = 8)
+
 
 # ------------------------------------------------------------------------------
 # Code for plotting per province attack rate by age

@@ -7,3 +7,6 @@ draft
 analysis/data/derived/model_fits_central.rds
 analysis/data/derived/model_fits_optimistic.rds
 analysis/data/derived/model_fits_worst.rds
+analysis/data/derived/model_fits_odriscoll_central.rds
+analysis/data/derived/model_fits_odriscoll_optimistic.rds
+analysis/data/derived/model_fits_odriscoll_worst.rds
