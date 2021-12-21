@@ -350,7 +350,9 @@ hosp_all_comp_plot <- function(provs_central, provs_worst, provs_optimistic) {
 
 }
 hosp_all_gg <- hosp_all_comp_plot(provs_central, provs_worst, provs_optimistic)
+hosp_all_odriscoll_gg <- hosp_all_comp_plot(provs_odriscoll_central, provs_odriscoll_worst, provs_odriscoll_optimistic)
 save_figs("hosp_all", hosp_all_gg, width = 12, height = 16)
+save_figs("hosp_all_odriscoll", hosp_all_odriscoll_gg, width = 12, height = 16)
 
 # ------------------------------------------------------------------------------
 # hospital comparison effects plot
