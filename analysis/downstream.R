@@ -119,7 +119,6 @@ provs_odriscoll_central <- parallel::mclapply(central_odrsicoll_rds, function(x)
     parallel = FALSE)
 }, mc.cores = 16, mc.cleanup = TRUE)
 names(provs_odriscoll_central) <- vapply(provs_odriscoll_central, function(x){x$parameters$province}, character(1))
-saveRDS(provs_odriscoll_central, "analysis/data/derived/model_fits_odriscoll_central.rds")
 
 provs_odriscoll_optimistic <- parallel::mclapply(worst_odrsicoll_rds, function(x) {
   x <- readRDS(x)
@@ -131,7 +130,6 @@ provs_odriscoll_optimistic <- parallel::mclapply(worst_odrsicoll_rds, function(x
     parallel = FALSE)
 }, mc.cores = 16, mc.cleanup = TRUE)
 names(provs_odriscoll_optimistic) <- vapply(provs_odriscoll_optimistic, function(x){x$parameters$province}, character(1))
-saveRDS(provs_odriscoll_optimistic, "analysis/data/derived/model_fits_odriscoll_optimistic.rds")
 
 provs_odriscoll_worst <- parallel::mclapply(optimistic_odrsicoll_rds, function(x) {
   x <- readRDS(x)
@@ -143,9 +141,11 @@ provs_odriscoll_worst <- parallel::mclapply(optimistic_odrsicoll_rds, function(x
     parallel = FALSE)
 }, mc.cores = 16)
 names(provs_odriscoll_worst) <- vapply(provs_odriscoll_worst, function(x){x$parameters$province}, character(1))
-saveRDS(provs_odriscoll_worst, "analysis/data/derived/model_fits_odriscoll_worst.rds")
 
 # uncomment these if memory being an issue
+# saveRDS(provs_odriscoll_central, "analysis/data/derived/model_fits_odriscoll_central.rds")
+# saveRDS(provs_odriscoll_optimistic, "analysis/data/derived/model_fits_odriscoll_optimistic.rds")
+# saveRDS(provs_odriscoll_worst, "analysis/data/derived/model_fits_odriscoll_worst.rds")
 
 # read in data
 
@@ -212,7 +212,7 @@ final_death_national_gg <- left_join(
                "model"="Modelled Deaths")) +
   ylab("Final Epidemic Deaths / 100000") +
   xlab("Age Group")
-save_figs("final_death_national", final_death_national_gg, width = 10, height = 8)
+save_figs("final_death_national", final_death_national_gg, width = 8, height = 4)
 
 # ------------------------------------------------------------------------------
 # attack rate nationally plot
@@ -338,7 +338,7 @@ hosp_all_comp_plot <- function(provs_central, provs_worst, provs_optimistic) {
       labels = c("confirmed"="Observed Confirmed",
                  "c_suspected"="Observed Suspected",
                  "hospitalisations"="Modelled Daily Hospitalisations")) +
-    ylab("Hospital Data") +
+    ylab("Daily Hospital Admissions") +
     ggpubr::theme_pubclean(base_size = 14) +
     theme(axis.line = element_line(),
           panel.grid.major.x = element_blank(),
@@ -760,7 +760,8 @@ reinfections_province_gg <- reinfections_dat %>%
         axis.text.x = element_text(angle = 45, hjust = 1),
         axis.title.x = element_blank()) +
   scale_x_date(date_labels = "%b %Y",
-               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01"))) +
+  scale_y_continuous(labels = scales::percent)
 save_figs("reinfections_province", reinfections_province_gg, width = 12, height = 16)
 
 reinfections_national_gg <- reinfections_dat %>%
@@ -776,10 +777,11 @@ reinfections_national_gg <- reinfections_dat %>%
   ggpubr::theme_pubclean(base_size = 14) +
   theme(axis.line = element_line(),
         panel.grid.major.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1),
         axis.title.x = element_blank()) +
   scale_x_date(date_labels = "%b %Y",
-               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01")))
+               breaks = as.Date(c("2020-04-01", "2020-10-01", "2021-04-01", "2021-10-01"))) +
+  scale_y_continuous(labels = scales::percent)
+
 save_figs("reinfections_national", reinfections_national_gg, width = 6, height = 4)
 
 # ------------------------------------------------------------------------------
@@ -1036,7 +1038,7 @@ inf_odriscoll_comp <- left_join(
 inf_comp <- left_join(inf_comp, inf_odriscoll_comp)
 
 national_attack_rate_comp_gg <-
-  inf_comp %>% pivot_longer(med:new_min) %>% mutate(Source = "") %>%
+  inf_comp %>% pivot_longer(med:new_max) %>% mutate(Source = "") %>%
   mutate(Source = "Brazeau et al.") %>%
   mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
   mutate(name = gsub("new_", "", name)) %>%
@@ -1081,14 +1083,14 @@ inf_comp_province <- left_join(inf_comp_province, inf_comp_odriscoll_province)
 
 # create our model seroprevalence data
 inf_comp_province_sero <- group_by(inf_comp_province, province) %>%
-  mutate(across(med:new_min, .fns = ~.x-lag(.x, default = 0))) %>%
-  mutate(across(med:new_min, roll_func, provs_central[[1]]$pmcmc_results$inputs$pars_obs$sero_det))
+  mutate(across(med:new_max, .fns = ~.x-lag(.x, default = 0))) %>%
+  mutate(across(med:new_max, roll_func, provs_central[[1]]$pmcmc_results$inputs$pars_obs$sero_det))
 
 inf_comp_province_sero <- left_join(
   inf_comp_province_sero,
   group_by(demog, province) %>% summarise(n = sum(n))
 ) %>%
-  mutate(across(med:new_min, .fns = ~.x / n))
+  mutate(across(med:new_max, .fns = ~.x / n))
 
 # load in teh observed serodata
 sero_dat <- readRDS(cp_path("src/prov_fit/sero.rds"))
@@ -1105,12 +1107,12 @@ sero_dat <- sero_dat %>% mutate(
 sero_comp_table <- left_join(sero_dat %>% select(province, sero_pos, samples),
                              inf_comp_province_sero %>%
                                filter(date %in% c(sero_dat$date_mid, sero_dat$date_start, sero_dat$date_end)) %>%
-                               select(date:new_min)
+                               select(date:new_max)
 )
 
 sero_comp_table <- mutate(
   sero_comp_table,
-  across(med:new_min, .fns = ~ dbinom(sero_pos, samples, .x, log = TRUE), .names = "ll_{.col}")
+  across(med:new_max, .fns = ~ dbinom(sero_pos, samples, .x, log = TRUE), .names = "ll_{.col}")
 )
 
 # median lls across all provinces
@@ -1124,7 +1126,7 @@ sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = c("ll_med","ll_new_me
   ggplot(aes(x=-med, color = name, fill = name)) +
   geom_density(alpha = 0.2) +
   scale_x_log10() +
-  xlab("Negative Log Likelihood of Model Fit against Khalaghi et al. Seroprevalence") +
+  xlab("Negative Log Likelihood of Model Fit") +
   ggpubr::theme_pubclean() +
   theme(axis.line = element_line()) +
   scale_fill_manual(name = "IFR Source:",
@@ -1133,7 +1135,7 @@ sero_comp_ll_gg <- sero_comp_table %>% pivot_longer(cols = c("ll_med","ll_new_me
                      values = c("Brazeau et al." = "black", "O'Driscoll et al." = "red"))
 save_figs("sero_comp_ll", sero_comp_ll_gg, width = 6, height = 4)
 
-sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_new_min) %>%
+sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_new_max) %>%
   mutate(Source = "Brazeau et al.") %>%
   mutate(Source = replace(Source, grepl("new", name), "O'Driscoll et al.")) %>%
   mutate(name = gsub("(ll.*)_(m.*)", "\\2", name)) %>%
@@ -1144,7 +1146,7 @@ sero_comp_province_ll_gg <- sero_comp_table %>% pivot_longer(cols = ll_med:ll_ne
   geom_errorbar(position = position_dodge(width = 0.5), width = 0.4) +
   scale_y_log10() +
   coord_flip() +
-  ylab("Negative Log Likelihood of Model Fit \nagainst Khalaghi et al. Seroprevalence\n") +
+  ylab("Negative Log Likelihood of Model Fit") +
   xlab("") +
   ggpubr::theme_pubclean() +
   theme(axis.line = element_line(), panel.grid.major.x = element_blank(),
