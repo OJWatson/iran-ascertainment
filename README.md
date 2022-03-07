@@ -13,7 +13,7 @@ the results.
 
 ### Installation
 
-    git clone https://github.com/mrc-ide/iran-ascertainment.git
+    git clone https://github.com/OJWatson/iran-ascertainment.git
     cd iran-rascertainment
     open iran-rascertainment.Rproj
     devtools::install_deps()
