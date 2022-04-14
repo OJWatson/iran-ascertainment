@@ -1,7 +1,7 @@
 Package: iranascertainment
 Type: Package
 Title: Analysis of COVID-19 mortality in Iran
-Version: 0.1.0
+Version: 0.1.1
 Authors@R: c(
   person("OJ", "Watson", email = "o.watson15@imperial.ac.uk", role = c("aut", "cre"))
   )
