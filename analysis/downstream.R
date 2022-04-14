@@ -441,6 +441,7 @@ wave_mod <- lme4::lmer(mdc ~ Wave + Month + (1+Month|province),
 # plot fixed effects
 ggeffs <- sjPlot::plot_model(wave_mod, sort.est = FALSE, show.values = TRUE,
                              value.offset = .1, axis.labels = "",
+                             p.adjust = "bonferroni",
                              vline.color = "grey", title = "") +
   theme_sjplot2() +
   ylab("Fixed effects of epidemic wave and month since start of pandemic")
@@ -452,6 +453,7 @@ ggreffs <- sjPlot::plot_model(wave_mod, type = "re",
                               sort.est = FALSE,
                               grid = FALSE,
                               show.values = TRUE,
+                              p.adjust = "bonferroni",
                               value.offset = .45, value.size = 3,
                               vline.color = "grey", title = "")
 ggreffs <- lapply(ggreffs, function(x){
