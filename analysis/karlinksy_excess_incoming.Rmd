@@ -1,0 +1,1564 @@
+---
+title: "Excess Mortality in Iran"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+devtools::load_all()
+
+pacman::p_load(tidyverse, readxl, lubridate, ConvCalendar, 
+               janitor, broom, glue, scales, ciTools, survey,
+               update = FALSE, install = FALSE)
+
+ggplottheme <- theme_classic() + 
+    theme(
+          panel.grid.major.x = element_blank(), 
+          panel.grid.major.y = element_line(color = "#cbcbcb"),
+          panel.grid.minor.x = element_blank(),
+          panel.background = element_rect(fill = "transparent",colour = NA),
+          plot.background = element_rect(fill = "white",colour = NA),
+          plot.title = element_text(hjust = 0),
+          plot.subtitle = element_text(hjust = 0),
+          plot.title.position = "plot",
+          plot.caption.position = "plot",
+          axis.ticks = element_blank(),
+          strip.background = element_blank()
+    )
+
+theme_set(ggplottheme)
+```
+
+# Introduction
+This markdown estimates excess mortality using All Cause Mortality data for Iran.
+
+# Data Load
+
+## Time Crosswalk
+Constructing Persian-Gregorian calendar crosswalk:
+```{r}
+time_crosswalk <- tibble(date = seq(from = as.Date("2014-03-22"),
+                                    to = as.Date("2022-03-19"),
+                                    "days")) %>% 
+  #filter(date >= "2017-03-18") %>% 
+  mutate(week = ceiling(row_number() / 7),
+         persian_day = as.OtherDate(date, "persian")$day,
+         persian_month = as.OtherDate(date, "persian")$month,
+         persian_year = as.OtherDate(date,"persian")$year,
+         gregorian_year = year(date),
+         gregorian_month = month(date),
+         day_of_week = wday(date, label = TRUE),
+         isoweek = isoweek(date),
+         isoyear = isoyear(date)) %>% 
+  mutate(week = case_when(date >= "2014-03-22" & date <= "2015-03-20" ~ week - 52 * 0,
+                          date >= "2015-03-21" & date <= "2016-03-18" ~ week - 52 * 1,
+                          date >= "2016-03-19" & date <= "2017-03-17" ~ week - 52 * 2,
+                          date >= "2017-03-18" & date <= "2018-03-23" ~ week - 52 * 3,
+                          date >= "2018-03-24" & date <= "2019-03-22" ~ week - 52 * 3 - 53 * 1,
+                          date >= "2019-03-23" & date <= "2020-03-20" ~ week - 52 * 4 - 53 * 1,
+                          date >= "2020-03-21" & date <= "2021-03-19" ~ week - 52 * 5 - 53 * 1,
+                          date >= "2021-03-20" & date <= "2022-03-18" ~ week - 52 * 6 - 53 * 1,
+                          TRUE ~ week),
+         persian_isoyear = case_when(date >= "2014-03-22" & date <= "2015-03-20" ~ 1393,
+                                     date >= "2015-03-21" & date <= "2016-03-18" ~ 1394,
+                                     date >= "2016-03-19" & date <= "2017-03-17" ~ 1395,
+                                     date >= "2017-03-18" & date <= "2018-03-23" ~ 1396,
+                                     date >= "2018-03-24" & date <= "2019-03-22" ~ 1397,
+                                     date >= "2019-03-23" & date <= "2020-03-20" ~ 1398,
+                                     date >= "2020-03-21" & date <= "2021-03-19" ~ 1399,
+                                     date >= "2021-03-20" & date <= "2022-03-18" ~ 1400,
+                          TRUE ~ week)) %>% 
+  filter(!(week > 100))
+
+time_crosswalk
+
+```
+
+## All Cause Mortality Data
+
+Load raw data in province-age format and wrangle age groups:
+```{r}
+deaths_1394_1400 <- read_csv(cp_path("analysis/data/raw/deaths_1394_1400_by_prov_age.csv")) %>% 
+    mutate(age_group = str_replace(age_group, "-", " to "),
+         age_group = str_replace(age_group, fixed("+"), "")) 
+
+deaths_1394_1400
+```
+# Excess Deaths Analysis
+significance level:
+```{r}
+alpha <- 0.95
+```
+1. Excess deaths by age-province (including national)
+2. Excess deaths by province (including national)
+3. Sum excess deaths by age-province
+4. Sum excess deaths by province
+
+## Excess deaths by age-province
+
+Estimate model for each age-province:
+```{r}
+age_province_models <- deaths_1394_1400 %>% 
+  filter(age_group != "All") %>% 
+  filter(year <= 1398) %>% 
+  filter(!(year == 1398 & week_num >= 27)) %>% #filter out fall & winter 1398
+  filter(!(province == "P0009" & year == 1394)) %>% #filter out 1394 for Chaharmahal and Bakhtiari
+  ungroup() %>% 
+  mutate(week_fct = as.factor(week_num)) %>% 
+  nest_by(province, province_name, age_group) %>% 
+  mutate(model = list(lm(deaths ~ year + week_fct - 1, data = data))) %>% 
+  mutate(sigma = glance(model)$sigma,
+         nobs = glance(model)$nobs,
+         df = model$df,
+         t_df = abs(qt((1 - alpha) / 2, df)))
+```
+
+Derive expected number of deaths for each age-province-week:
+```{r}
+age_province_expected_deaths <- age_province_models %>% 
+  summarise(df = model$df,
+            broom::augment(model, newdata = tibble(week_fct = c(1:52) %>% as.factor(),
+                                                   year = 1399),
+                                    interval = "prediction",
+                                   se_fit = TRUE)
+            ) %>% 
+  mutate(week_num = as.numeric(week_fct)) %>% 
+  rename(expected = .fitted) %>% 
+  mutate(t_df = abs(qt((1 - alpha) / 2, df)),
+         .se.fit.pred = (.upper - expected)/t_df) %>% 
+  select(-year)
+
+
+age_province_expected_deaths
+```
+
+Age-Province excess deaths:
+```{r}
+age_province_excess_deaths <- deaths_1394_1400 %>% 
+  filter(age_group != "All") %>% 
+  ungroup() %>% 
+  filter(year >= 1399 | (year == 1398 & week_num >= 41)) %>% 
+  left_join(age_province_expected_deaths %>% select(-c(df, t_df)), 
+            by = c("province","province_name","age_group","week_num")) %>% 
+  rename(expected_deaths_mean = expected,
+         expected_deaths_low = .lower,
+         expected_deaths_high = .upper,
+         se = .se.fit.pred) %>% 
+  mutate(excess_deaths_mean = deaths - expected_deaths_mean,
+         excess_deaths_low = deaths - expected_deaths_low,
+         excess_deaths_high = deaths - expected_deaths_high) %>% 
+  select(-contains("week_fct"), -.se.fit) %>% 
+  relocate(province, province_name)
+
+age_province_excess_deaths
+```
+
+Output:
+```{r}
+age_province_excess_deaths %>% 
+  select(province,year,age_group,week_num,deaths,expected_deaths_mean,
+         expected_deaths_low,expected_deaths_high,excess_deaths_mean,
+         excess_deaths_low,excess_deaths_high,province_name) %>% 
+  arrange(province, year, age_group, week_num) %>% 
+  write_excel_csv(cp_path("analysis/data/raw/iran_deaths_age_province.csv"))
+```
+
+
+
+## Excess deaths by province
+
+Estimate model for each province:
+```{r}
+province_models <- deaths_1394_1400 %>% 
+  filter(age_group == "All") %>% 
+  filter(year <= 1398) %>% 
+  filter(!(year == 1398 & week_num >= 27)) %>% #filter out fall & winter 1398
+  filter(!(province == "P0009" & year == 1394)) %>% #filter out 1394 for Chaharmahal and Bakhtiari
+  ungroup() %>% 
+  group_by(province, province_name, year, week_num) %>% 
+  summarise(deaths = sum(deaths)) %>% 
+  ungroup() %>% 
+  mutate(week_fct = as.factor(week_num)) %>% 
+  nest_by(province, province_name) %>% 
+  mutate(model = list(lm(deaths ~ year + week_fct - 1, data = data))) %>% 
+  mutate(sigma = glance(model)$sigma,
+         nobs = glance(model)$nobs,
+         df = model$df,
+         t_df = abs(qt((1 - alpha) / 2, df)))
+```
+
+Derive expected number of deaths for each age-province-week:
+```{r}
+province_expected_deaths <- province_models %>% 
+  summarise(df = model$df,
+            broom::augment(model, newdata = tibble(week_fct = c(1:52) %>% as.factor(),
+                                                   year = 1399),
+                                    interval = "prediction",
+                                   se_fit = TRUE)
+            ) %>% 
+  mutate(week_num = as.numeric(week_fct)) %>% 
+  rename(expected = .fitted) %>% 
+  mutate(t_df = abs(qt((1 - alpha) / 2, df)),
+         .se.fit.pred = (.upper - expected)/t_df) %>% 
+  select(-year)
+
+
+province_expected_deaths
+```
+
+Province excess deaths:
+```{r}
+province_excess_deaths <- deaths_1394_1400 %>% 
+   filter(age_group == "All") %>% 
+  ungroup() %>% 
+  filter(year >= 1399 | (year == 1398 & week_num >= 41)) %>% 
+  group_by(province, province_name, year, week_num) %>% 
+  summarise(deaths = sum(deaths)) %>% 
+  ungroup() %>% 
+  left_join(province_expected_deaths %>% select(-c(df, t_df)), 
+            by = c("province","province_name","week_num")) %>% 
+  rename(expected_deaths_mean = expected,
+         expected_deaths_low = .lower,
+         expected_deaths_high = .upper,
+         se = .se.fit.pred) %>% 
+  mutate(excess_deaths_mean = deaths - expected_deaths_mean,
+         excess_deaths_low = deaths - expected_deaths_low,
+         excess_deaths_high = deaths - expected_deaths_high) %>% 
+  select(-contains("week_fct"), -.se.fit) %>% 
+  relocate(province, province_name)
+
+province_excess_deaths
+```
+
+Output:
+```{r}
+province_excess_deaths %>% 
+  select(province,year,week_num,deaths,expected_deaths_mean,
+        expected_deaths_low,expected_deaths_high,excess_deaths_mean,
+        excess_deaths_low,excess_deaths_high,province_name) %>% 
+  arrange(province, year, week_num) %>% 
+  write_excel_csv(cp_path("analysis/data/raw/iran_deaths_province.csv"))
+```
+
+## Total Excess Deaths by age-province
+
+Estimate total excess deaths by summing across the weekly excess and estimating the standard error as a linear combination.
+
+Derive number of weeks to sum over:
+```{r}
+num_periods <- count(age_province_excess_deaths, province, age_group)[1,3] %>% 
+  as.integer
+```
+
+Estimating sum and SE:
+
+Obtain the list of models:
+```{r}
+model_list <- age_province_models %>% 
+  pull(model)
+```
+
+Obtaining total expected and SE of total expected as a linear combination of the model coefficients:
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * num_periods, 
+                        "week_fct1"=2,
+                        "week_fct2"=2,
+                        "week_fct3"=2,
+                        "week_fct4"=2,
+                        "week_fct5"=2,
+                        "week_fct6"=2,
+                        "week_fct7"=2,
+                        "week_fct8"=2,
+                        "week_fct9"=2,
+                        "week_fct10"=2,
+                        "week_fct11"=2,
+                        "week_fct12"=2,
+                        "week_fct13"=2,
+                        "week_fct14"=2,
+                        "week_fct15"=2,
+                        "week_fct16"=2,
+                        "week_fct17"=2,
+                        "week_fct18"=2,
+                        "week_fct19"=2,
+                        "week_fct20"=2,
+                        "week_fct21"=2,
+                        "week_fct22"=2,
+                        "week_fct23"=2,
+                        "week_fct24"=2,
+                        "week_fct25"=2,
+                        "week_fct26"=2,
+                        "week_fct27"=2,
+                        "week_fct28"=2,
+                        "week_fct29"=2,
+                        "week_fct30"=2,
+                        "week_fct31"=2,
+                        "week_fct32"=2,
+                        "week_fct33"=2,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=2,
+                        "week_fct48"=2,
+                        "week_fct49"=2,
+                        "week_fct50"=2,
+                        "week_fct51"=2,
+                        "week_fct52"=2
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+Estimate prediction/forecast standard error by adding the uncertainty in dependent variable:
+```{r}
+SEs <- age_province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  ungroup() %>% 
+  mutate(se_delta = sqrt(SE^2 + num_periods*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast) 
+  
+SEs
+```
+
+Combine:
+```{r}
+age_province_excess_sum <- age_province_excess_deaths %>% 
+  group_by(province, age_group) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province","age_group")) %>% 
+  select(province, province_name, age_group,total_expected, t_df, 
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+age_province_excess_sum
+```
+
+Output to file:
+```{r}
+age_province_excess_sum %>% 
+  write_excel_csv(cp_path("analysis/data/raw/age_province_excess_sum.csv"))
+```
+
+
+## Total Excess Deaths by province
+
+Estimating sum and SE:
+
+Obtain the list of models:
+```{r}
+model_list <- province_models %>% 
+  pull(model)
+```
+
+Obtaining total expected and SE of total expected as a linear combination of the model coefficients:
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * num_periods, 
+                        "week_fct1"=2,
+                        "week_fct2"=2,
+                        "week_fct3"=2,
+                        "week_fct4"=2,
+                        "week_fct5"=2,
+                        "week_fct6"=2,
+                        "week_fct7"=2,
+                        "week_fct8"=2,
+                        "week_fct9"=2,
+                        "week_fct10"=2,
+                        "week_fct11"=2,
+                        "week_fct12"=2,
+                        "week_fct13"=2,
+                        "week_fct14"=2,
+                        "week_fct15"=2,
+                        "week_fct16"=2,
+                        "week_fct17"=2,
+                        "week_fct18"=2,
+                        "week_fct19"=2,
+                        "week_fct20"=2,
+                        "week_fct21"=2,
+                        "week_fct22"=2,
+                        "week_fct23"=2,
+                        "week_fct24"=2,
+                        "week_fct25"=2,
+                        "week_fct26"=2,
+                        "week_fct27"=2,
+                        "week_fct28"=2,
+                        "week_fct29"=2,
+                        "week_fct30"=2,
+                        "week_fct31"=2,
+                        "week_fct32"=2,
+                        "week_fct33"=2,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=2,
+                        "week_fct48"=2,
+                        "week_fct49"=2,
+                        "week_fct50"=2,
+                        "week_fct51"=2,
+                        "week_fct52"=2
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+Estimate prediction/forecast standard error by adding the uncertainty in dependent variable:
+```{r}
+SEs <- province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  ungroup() %>% 
+  mutate(se_delta = sqrt(SE^2 + num_periods*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast) 
+  
+SEs
+```
+
+Combine:
+```{r}
+province_excess_sum <- province_excess_deaths %>% 
+  group_by(province) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province")) %>% 
+  select(province, province_name, total_expected, t_df, 
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+province_excess_sum
+```
+
+Output to file:
+```{r}
+province_excess_sum %>% 
+  write_excel_csv(cp_path("analysis/data/raw/province_excess_sum.csv"))
+```
+
+## By Wave
+
+Time crosswalk for waves:
+```{r}
+waves_times <- time_crosswalk %>% 
+  filter(persian_isoyear >= 1399 | (persian_isoyear == 1398 & week >= 41)) %>% 
+  select(date, persian_isoyear, week) %>% 
+  mutate(wave = case_when(date <= "2020-06-05" ~ 1,
+                          date > "2020-06-05" & date <= "2020-09-04" ~ 2,
+                          date > "2020-09-04" & date <= "2021-02-05" ~ 3,
+                          date > "2021-02-05" & date <= "2021-07-02" ~ 4,
+                          date > "2021-07-02" ~ 5)) %>% 
+  group_by(persian_isoyear, week) %>% 
+  summarise(date = max(date), wave = max(wave))
+
+waves_times
+```
+
+End year-week for each wave:
+```{r}
+waves_limits <- waves_times %>% 
+  group_by(wave) %>% 
+  summarise(max_date = max(date)) %>% 
+  left_join(waves_times, by = c("max_date" = "date",
+                                "wave"))
+
+waves_limits
+```
+
+
+Obtain number of periods for each wave:
+```{r}
+waves_periods <- age_province_excess_deaths %>% 
+  filter(year >= 1399 | (year == 1398 & week_num >= 41)) %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(province_name == "Iran", age_group == "80") %>% 
+  group_by(wave) %>% 
+  count() %>%
+  ungroup() %>% 
+  mutate(num_periods = cumsum(n)) 
+
+waves_periods
+```
+
+
+### Total excess deaths by age-province-wave
+
+```{r}
+model_list <- age_province_models %>% 
+  pull(model)
+```
+
+#### Wave 1
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[1,3]) ,
+                        "week_fct1"=1,
+                        "week_fct2"=1,
+                        "week_fct3"=1,
+                        "week_fct4"=1,
+                        "week_fct5"=1,
+                        "week_fct6"=1,
+                        "week_fct7"=1,
+                        "week_fct8"=1,
+                        "week_fct9"=1,
+                        "week_fct10"=1,
+                        "week_fct11"=1,
+                        "week_fct12"=0,
+                        "week_fct13"=0,
+                        "week_fct14"=0,
+                        "week_fct15"=0,
+                        "week_fct16"=0,
+                        "week_fct17"=0,
+                        "week_fct18"=0,
+                        "week_fct19"=0,
+                        "week_fct20"=0,
+                        "week_fct21"=0,
+                        "week_fct22"=0,
+                        "week_fct23"=0,
+                        "week_fct24"=0,
+                        "week_fct25"=0,
+                        "week_fct26"=0,
+                        "week_fct27"=0,
+                        "week_fct28"=0,
+                        "week_fct29"=0,
+                        "week_fct30"=0,
+                        "week_fct31"=0,
+                        "week_fct32"=0,
+                        "week_fct33"=0,
+                        "week_fct34"=0,
+                        "week_fct35"=0,
+                        "week_fct36"=0,
+                        "week_fct37"=0,
+                        "week_fct38"=0,
+                        "week_fct39"=0,
+                        "week_fct40"=0,
+                        "week_fct41"=1,
+                        "week_fct42"=1,
+                        "week_fct43"=1,
+                        "week_fct44"=1,
+                        "week_fct45"=1,
+                        "week_fct46"=1,
+                        "week_fct47"=1,
+                        "week_fct48"=1,
+                        "week_fct49"=1,
+                        "week_fct50"=1,
+                        "week_fct51"=1,
+                        "week_fct52"=1
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- age_province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[1,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave1 <- age_province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave == 1) %>% 
+  group_by(province, age_group) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province","age_group")) %>% 
+  select(province, province_name, age_group,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave1
+```
+
+#### Wave 2
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[2,3]) ,
+                        "week_fct1"=1,
+                        "week_fct2"=1,
+                        "week_fct3"=1,
+                        "week_fct4"=1,
+                        "week_fct5"=1,
+                        "week_fct6"=1,
+                        "week_fct7"=1,
+                        "week_fct8"=1,
+                        "week_fct9"=1,
+                        "week_fct10"=1,
+                        "week_fct11"=1,
+                        "week_fct12"=1,
+                        "week_fct13"=1,
+                        "week_fct14"=1,
+                        "week_fct15"=1,
+                        "week_fct16"=1,
+                        "week_fct17"=1,
+                        "week_fct18"=1,
+                        "week_fct19"=1,
+                        "week_fct20"=1,
+                        "week_fct21"=1,
+                        "week_fct22"=1,
+                        "week_fct23"=1,
+                        "week_fct24"=1,
+                        "week_fct25"=0,
+                        "week_fct26"=0,
+                        "week_fct27"=0,
+                        "week_fct28"=0,
+                        "week_fct29"=0,
+                        "week_fct30"=0,
+                        "week_fct31"=0,
+                        "week_fct32"=0,
+                        "week_fct33"=0,
+                        "week_fct34"=0,
+                        "week_fct35"=0,
+                        "week_fct36"=0,
+                        "week_fct37"=0,
+                        "week_fct38"=0,
+                        "week_fct39"=0,
+                        "week_fct40"=0,
+                        "week_fct41"=1,
+                        "week_fct42"=1,
+                        "week_fct43"=1,
+                        "week_fct44"=1,
+                        "week_fct45"=1,
+                        "week_fct46"=1,
+                        "week_fct47"=1,
+                        "week_fct48"=1,
+                        "week_fct49"=1,
+                        "week_fct50"=1,
+                        "week_fct51"=1,
+                        "week_fct52"=1
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- age_province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[2,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave2 <- age_province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave <= 2) %>% 
+  group_by(province, age_group) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province","age_group")) %>% 
+  select(province, province_name, age_group,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave2
+```
+
+#### Wave 3
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[3,3]) ,
+                        "week_fct1"=1,
+                        "week_fct2"=1,
+                        "week_fct3"=1,
+                        "week_fct4"=1,
+                        "week_fct5"=1,
+                        "week_fct6"=1,
+                        "week_fct7"=1,
+                        "week_fct8"=1,
+                        "week_fct9"=1,
+                        "week_fct10"=1,
+                        "week_fct11"=1,
+                        "week_fct12"=1,
+                        "week_fct13"=1,
+                        "week_fct14"=1,
+                        "week_fct15"=1,
+                        "week_fct16"=1,
+                        "week_fct17"=1,
+                        "week_fct18"=1,
+                        "week_fct19"=1,
+                        "week_fct20"=1,
+                        "week_fct21"=1,
+                        "week_fct22"=1,
+                        "week_fct23"=1,
+                        "week_fct24"=1,
+                        "week_fct25"=1,
+                        "week_fct26"=1,
+                        "week_fct27"=1,
+                        "week_fct28"=1,
+                        "week_fct29"=1,
+                        "week_fct30"=1,
+                        "week_fct31"=1,
+                        "week_fct32"=1,
+                        "week_fct33"=1,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=1,
+                        "week_fct48"=1,
+                        "week_fct49"=1,
+                        "week_fct50"=1,
+                        "week_fct51"=1,
+                        "week_fct52"=1
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- age_province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[3,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave3 <- age_province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave <= 3) %>% 
+  group_by(province, age_group) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province","age_group")) %>% 
+  select(province, province_name, age_group,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave3
+```
+
+#### Wave 4
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[4,3]) ,
+                        "week_fct1"=2,
+                        "week_fct2"=2,
+                        "week_fct3"=2,
+                        "week_fct4"=2,
+                        "week_fct5"=2,
+                        "week_fct6"=2,
+                        "week_fct7"=2,
+                        "week_fct8"=2,
+                        "week_fct9"=2,
+                        "week_fct10"=2,
+                        "week_fct11"=2,
+                        "week_fct12"=2,
+                        "week_fct13"=2,
+                        "week_fct14"=2,
+                        "week_fct15"=2,
+                        "week_fct16"=1,
+                        "week_fct17"=1,
+                        "week_fct18"=1,
+                        "week_fct19"=1,
+                        "week_fct20"=1,
+                        "week_fct21"=1,
+                        "week_fct22"=1,
+                        "week_fct23"=1,
+                        "week_fct24"=1,
+                        "week_fct25"=1,
+                        "week_fct26"=1,
+                        "week_fct27"=1,
+                        "week_fct28"=1,
+                        "week_fct29"=1,
+                        "week_fct30"=1,
+                        "week_fct31"=1,
+                        "week_fct32"=1,
+                        "week_fct33"=1,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=2,
+                        "week_fct48"=2,
+                        "week_fct49"=2,
+                        "week_fct50"=2,
+                        "week_fct51"=2,
+                        "week_fct52"=2
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- age_province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[4,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave4 <- age_province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave <= 4) %>% 
+  group_by(province, age_group) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province","age_group")) %>% 
+  select(province, province_name, age_group,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave4
+```
+
+
+
+#### Wave 5
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[5,3]) ,
+                        "week_fct1"=2,
+                        "week_fct2"=2,
+                        "week_fct3"=2,
+                        "week_fct4"=2,
+                        "week_fct5"=2,
+                        "week_fct6"=2,
+                        "week_fct7"=2,
+                        "week_fct8"=2,
+                        "week_fct9"=2,
+                        "week_fct10"=2,
+                        "week_fct11"=2,
+                        "week_fct12"=2,
+                        "week_fct13"=2,
+                        "week_fct14"=2,
+                        "week_fct15"=2,
+                        "week_fct16"=2,
+                        "week_fct17"=2,
+                        "week_fct18"=2,
+                        "week_fct19"=2,
+                        "week_fct20"=2,
+                        "week_fct21"=2,
+                        "week_fct22"=2,
+                        "week_fct23"=2,
+                        "week_fct24"=2,
+                        "week_fct25"=2,
+                        "week_fct26"=2,
+                        "week_fct27"=2,
+                        "week_fct28"=2,
+                        "week_fct29"=2,
+                        "week_fct30"=2,
+                        "week_fct31"=2,
+                        "week_fct32"=2,
+                        "week_fct33"=2,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=2,
+                        "week_fct48"=2,
+                        "week_fct49"=2,
+                        "week_fct50"=2,
+                        "week_fct51"=2,
+                        "week_fct52"=2
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- age_province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[5,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave5 <- age_province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave <= 5) %>% 
+  group_by(province, age_group) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province","age_group")) %>% 
+  select(province, province_name, age_group,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave5
+```
+
+
+
+#### Combine waves
+Output to file:
+```{r}
+bind_rows("wave 1" = excess_sum_wave1,
+          "wave 2" = excess_sum_wave2,
+          "wave 3" = excess_sum_wave3,
+          "wave 4" = excess_sum_wave4,
+          "wave 5" = excess_sum_wave5,
+          .id = "wave") %>% 
+  write_excel_csv(cp_path("analysis/data/raw/age_province_excess_sum_waves.csv"))
+```
+
+
+
+
+### Total excess deaths by province-wave
+
+```{r}
+model_list <- province_models %>% 
+  pull(model)
+```
+
+#### Wave 1
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[1,3]) ,
+                        "week_fct1"=1,
+                        "week_fct2"=1,
+                        "week_fct3"=1,
+                        "week_fct4"=1,
+                        "week_fct5"=1,
+                        "week_fct6"=1,
+                        "week_fct7"=1,
+                        "week_fct8"=1,
+                        "week_fct9"=1,
+                        "week_fct10"=1,
+                        "week_fct11"=1,
+                        "week_fct12"=0,
+                        "week_fct13"=0,
+                        "week_fct14"=0,
+                        "week_fct15"=0,
+                        "week_fct16"=0,
+                        "week_fct17"=0,
+                        "week_fct18"=0,
+                        "week_fct19"=0,
+                        "week_fct20"=0,
+                        "week_fct21"=0,
+                        "week_fct22"=0,
+                        "week_fct23"=0,
+                        "week_fct24"=0,
+                        "week_fct25"=0,
+                        "week_fct26"=0,
+                        "week_fct27"=0,
+                        "week_fct28"=0,
+                        "week_fct29"=0,
+                        "week_fct30"=0,
+                        "week_fct31"=0,
+                        "week_fct32"=0,
+                        "week_fct33"=0,
+                        "week_fct34"=0,
+                        "week_fct35"=0,
+                        "week_fct36"=0,
+                        "week_fct37"=0,
+                        "week_fct38"=0,
+                        "week_fct39"=0,
+                        "week_fct40"=0,
+                        "week_fct41"=1,
+                        "week_fct42"=1,
+                        "week_fct43"=1,
+                        "week_fct44"=1,
+                        "week_fct45"=1,
+                        "week_fct46"=1,
+                        "week_fct47"=1,
+                        "week_fct48"=1,
+                        "week_fct49"=1,
+                        "week_fct50"=1,
+                        "week_fct51"=1,
+                        "week_fct52"=1
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[1,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave1 <- province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave == 1) %>% 
+  group_by(province) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province")) %>% 
+  select(province, province_name,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave1
+```
+
+#### Wave 2
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[2,3]) ,
+                        "week_fct1"=1,
+                        "week_fct2"=1,
+                        "week_fct3"=1,
+                        "week_fct4"=1,
+                        "week_fct5"=1,
+                        "week_fct6"=1,
+                        "week_fct7"=1,
+                        "week_fct8"=1,
+                        "week_fct9"=1,
+                        "week_fct10"=1,
+                        "week_fct11"=1,
+                        "week_fct12"=1,
+                        "week_fct13"=1,
+                        "week_fct14"=1,
+                        "week_fct15"=1,
+                        "week_fct16"=1,
+                        "week_fct17"=1,
+                        "week_fct18"=1,
+                        "week_fct19"=1,
+                        "week_fct20"=1,
+                        "week_fct21"=1,
+                        "week_fct22"=1,
+                        "week_fct23"=1,
+                        "week_fct24"=1,
+                        "week_fct25"=0,
+                        "week_fct26"=0,
+                        "week_fct27"=0,
+                        "week_fct28"=0,
+                        "week_fct29"=0,
+                        "week_fct30"=0,
+                        "week_fct31"=0,
+                        "week_fct32"=0,
+                        "week_fct33"=0,
+                        "week_fct34"=0,
+                        "week_fct35"=0,
+                        "week_fct36"=0,
+                        "week_fct37"=0,
+                        "week_fct38"=0,
+                        "week_fct39"=0,
+                        "week_fct40"=0,
+                        "week_fct41"=1,
+                        "week_fct42"=1,
+                        "week_fct43"=1,
+                        "week_fct44"=1,
+                        "week_fct45"=1,
+                        "week_fct46"=1,
+                        "week_fct47"=1,
+                        "week_fct48"=1,
+                        "week_fct49"=1,
+                        "week_fct50"=1,
+                        "week_fct51"=1,
+                        "week_fct52"=1
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[2,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave2
+
+excess_sum_wave2 <- province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave == 2) %>% 
+  group_by(province) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province")) %>% 
+  select(province, province_name,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave2
+```
+
+#### Wave 3
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[3,3]) ,
+                        "week_fct1"=1,
+                        "week_fct2"=1,
+                        "week_fct3"=1,
+                        "week_fct4"=1,
+                        "week_fct5"=1,
+                        "week_fct6"=1,
+                        "week_fct7"=1,
+                        "week_fct8"=1,
+                        "week_fct9"=1,
+                        "week_fct10"=1,
+                        "week_fct11"=1,
+                        "week_fct12"=1,
+                        "week_fct13"=1,
+                        "week_fct14"=1,
+                        "week_fct15"=1,
+                        "week_fct16"=1,
+                        "week_fct17"=1,
+                        "week_fct18"=1,
+                        "week_fct19"=1,
+                        "week_fct20"=1,
+                        "week_fct21"=1,
+                        "week_fct22"=1,
+                        "week_fct23"=1,
+                        "week_fct24"=1,
+                        "week_fct25"=1,
+                        "week_fct26"=1,
+                        "week_fct27"=1,
+                        "week_fct28"=1,
+                        "week_fct29"=1,
+                        "week_fct30"=1,
+                        "week_fct31"=1,
+                        "week_fct32"=1,
+                        "week_fct33"=1,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=1,
+                        "week_fct48"=1,
+                        "week_fct49"=1,
+                        "week_fct50"=1,
+                        "week_fct51"=1,
+                        "week_fct52"=1
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[3,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave3 <- province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave == 3) %>% 
+  group_by(province) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province")) %>% 
+  select(province, province_name,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave3
+```
+
+#### Wave 4
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[4,3]) ,
+                        "week_fct1"=2,
+                        "week_fct2"=2,
+                        "week_fct3"=2,
+                        "week_fct4"=2,
+                        "week_fct5"=2,
+                        "week_fct6"=2,
+                        "week_fct7"=2,
+                        "week_fct8"=2,
+                        "week_fct9"=2,
+                        "week_fct10"=2,
+                        "week_fct11"=2,
+                        "week_fct12"=2,
+                        "week_fct13"=2,
+                        "week_fct14"=2,
+                        "week_fct15"=2,
+                        "week_fct16"=1,
+                        "week_fct17"=1,
+                        "week_fct18"=1,
+                        "week_fct19"=1,
+                        "week_fct20"=1,
+                        "week_fct21"=1,
+                        "week_fct22"=1,
+                        "week_fct23"=1,
+                        "week_fct24"=1,
+                        "week_fct25"=1,
+                        "week_fct26"=1,
+                        "week_fct27"=1,
+                        "week_fct28"=1,
+                        "week_fct29"=1,
+                        "week_fct30"=1,
+                        "week_fct31"=1,
+                        "week_fct32"=1,
+                        "week_fct33"=1,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=2,
+                        "week_fct48"=2,
+                        "week_fct49"=2,
+                        "week_fct50"=2,
+                        "week_fct51"=2,
+                        "week_fct52"=2
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[4,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave4 <- province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave == 4) %>% 
+  group_by(province) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province")) %>% 
+  select(province, province_name,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave4
+```
+
+
+
+#### Wave 5
+```{r}
+models_delta_se <- map(model_list, ~survey::svycontrast(stat = ., 
+                                     list(c("year" = 1399 * as.integer(waves_periods[5,3]) ,
+                        "week_fct1"=2,
+                        "week_fct2"=2,
+                        "week_fct3"=2,
+                        "week_fct4"=2,
+                        "week_fct5"=2,
+                        "week_fct6"=2,
+                        "week_fct7"=2,
+                        "week_fct8"=2,
+                        "week_fct9"=2,
+                        "week_fct10"=2,
+                        "week_fct11"=2,
+                        "week_fct12"=2,
+                        "week_fct13"=2,
+                        "week_fct14"=2,
+                        "week_fct15"=2,
+                        "week_fct16"=2,
+                        "week_fct17"=2,
+                        "week_fct18"=2,
+                        "week_fct19"=2,
+                        "week_fct20"=2,
+                        "week_fct21"=2,
+                        "week_fct22"=2,
+                        "week_fct23"=2,
+                        "week_fct24"=2,
+                        "week_fct25"=2,
+                        "week_fct26"=2,
+                        "week_fct27"=2,
+                        "week_fct28"=2,
+                        "week_fct29"=2,
+                        "week_fct30"=2,
+                        "week_fct31"=2,
+                        "week_fct32"=2,
+                        "week_fct33"=2,
+                        "week_fct34"=1,
+                        "week_fct35"=1,
+                        "week_fct36"=1,
+                        "week_fct37"=1,
+                        "week_fct38"=1,
+                        "week_fct39"=1,
+                        "week_fct40"=1,
+                        "week_fct41"=2,
+                        "week_fct42"=2,
+                        "week_fct43"=2,
+                        "week_fct44"=2,
+                        "week_fct45"=2,
+                        "week_fct46"=2,
+                        "week_fct47"=2,
+                        "week_fct48"=2,
+                        "week_fct49"=2,
+                        "week_fct50"=2,
+                        "week_fct51"=2,
+                        "week_fct52"=2
+                        )))
+    ) %>%
+  map(., as_tibble) %>%
+  bind_rows()
+```
+
+
+
+
+```{r}
+SEs <- province_models %>% 
+  bind_cols(models_delta_se) %>% 
+  mutate(se_delta = sqrt(SE^2 + as.integer(waves_periods[5,3])*(sigma^2))) %>% 
+  select(-c(data,model)) %>% 
+  rename(expected = contrast)
+  
+SEs
+```
+
+Put all together: 
+```{r}
+excess_sum_wave5 <- province_excess_deaths %>% 
+  left_join(waves_times, by = c("year" = "persian_isoyear",
+                                "week_num" = "week")) %>% 
+  filter(wave == 5) %>% 
+  group_by(province) %>% 
+  summarise(total_expected = sum(expected_deaths_mean), 
+            total_observed = sum(deaths),
+            total_excess0 = sum(excess_deaths_mean[excess_deaths_mean > 0]),
+            total_excess = total_observed - total_expected) %>% 
+  ungroup() %>% 
+  left_join(SEs, by = c("province")) %>% 
+  select(province, province_name,total_expected, t_df,
+         total_observed, total_excess, total_excess0, se_excess = se_delta) %>% 
+  mutate(total_excess_low = total_excess - t_df*se_excess,
+         total_excess_high = total_excess + t_df*se_excess,
+         total_excess0_low = total_excess0 - t_df*se_excess,
+         total_excess0_high = total_excess0 + t_df*se_excess) %>% 
+  select(-t_df)
+
+excess_sum_wave5
+```
+
+
+
+#### Combine waves
+Output to file:
+```{r}
+bind_rows("wave 1" = excess_sum_wave1,
+          "wave 2" = excess_sum_wave2,
+          "wave 3" = excess_sum_wave3,
+          "wave 4" = excess_sum_wave4,
+          "wave 5" = excess_sum_wave5,
+          .id = "wave") %>% 
+  write_excel_csv(cp_path("analysis/data/raw/province_excess_sum_waves.csv"))
+```
+
+
+

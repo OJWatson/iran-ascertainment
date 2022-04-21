@@ -87,11 +87,11 @@ names(provs_central) <- vapply(provs_central, function(x){x$parameters$province}
 names(provs_optimistic) <- vapply(provs_optimistic, function(x){x$parameters$province}, character(1))
 names(provs_worst) <- vapply(provs_worst, function(x){x$parameters$province}, character(1))
 
-# these commented for memory issues/ease
+# save to file for memory ease
 
-# saveRDS(provs_central, "analysis/data/derived/model_fits_central.rds")
-# saveRDS(provs_worst, "analysis/data/derived/model_fits_worst.rds")
-# saveRDS(provs_optimistic, "analysis/data/derived/model_fits_optimistic.rds")
+saveRDS(provs_central, "analysis/data/derived/model_fits_central.rds")
+saveRDS(provs_worst, "analysis/data/derived/model_fits_worst.rds")
+saveRDS(provs_optimistic, "analysis/data/derived/model_fits_optimistic.rds")
 
 # and the odriscoll
 
@@ -142,10 +142,10 @@ provs_odriscoll_worst <- parallel::mclapply(optimistic_odrsicoll_rds, function(x
 }, mc.cores = 16)
 names(provs_odriscoll_worst) <- vapply(provs_odriscoll_worst, function(x){x$parameters$province}, character(1))
 
-# uncomment these if memory being an issue
-# saveRDS(provs_odriscoll_central, "analysis/data/derived/model_fits_odriscoll_central.rds")
-# saveRDS(provs_odriscoll_optimistic, "analysis/data/derived/model_fits_odriscoll_optimistic.rds")
-# saveRDS(provs_odriscoll_worst, "analysis/data/derived/model_fits_odriscoll_worst.rds")
+# save to file for memory ease
+saveRDS(provs_odriscoll_central, "analysis/data/derived/model_fits_odriscoll_central.rds")
+saveRDS(provs_odriscoll_optimistic, "analysis/data/derived/model_fits_odriscoll_optimistic.rds")
+saveRDS(provs_odriscoll_worst, "analysis/data/derived/model_fits_odriscoll_worst.rds")
 
 # read in data
 
@@ -435,7 +435,7 @@ mod_dat$Month <- as.integer(round((mod_dat$date - min(mod_dat$date))/30))
 # build model
 wave_mod <- lme4::lmer(mdc ~ Wave + Month + (1+Month|province),
                        data = mod_dat[is.finite(mod_dat$mdc),],
-                       control=lmerControl(optimizer="bobyqa",
+                       control=lme4::lmerControl(optimizer="bobyqa",
                                            optCtrl=list(maxfun=1e6)))
 
 # plot fixed effects
@@ -443,7 +443,7 @@ ggeffs <- sjPlot::plot_model(wave_mod, sort.est = FALSE, show.values = TRUE,
                              value.offset = .1, axis.labels = "",
                              p.adjust = "bonferroni",
                              vline.color = "grey", title = "") +
-  theme_sjplot2() +
+  sjPlot::theme_sjplot2() +
   ylab("Fixed effects of epidemic wave and month since start of pandemic")
 ggeffs$layers[[1]]$aes_params$size <-  0.5
 ggeffs <- ggeffs + theme(plot.background = element_rect(fill = "white", color = "white"))
@@ -457,7 +457,7 @@ ggreffs <- sjPlot::plot_model(wave_mod, type = "re",
                               value.offset = .45, value.size = 3,
                               vline.color = "grey", title = "")
 ggreffs <- lapply(ggreffs, function(x){
-  x <- x + theme_sjplot2() +
+  x <- x + sjPlot::theme_sjplot2() +
   theme(plot.title = element_blank())
   x$data$term <- factor(
     x$data$term,
@@ -526,8 +526,8 @@ national_ar_age_gg <- inf_comp_age  %>%
         panel.grid.major.x = element_blank()) +
   ylab("National Attack Rate") +
   xlab("Age Group") +
-  scale_y_continuous(labels = scales::percent)
-
+  scale_y_continuous(labels = scales::percent, breaks = c(0.4,0.6,0.8,1,1.2))
+save_figs("national_ar_age", national_ar_age_gg, width = 6, height = 4)
 
 # ------------------------------------------------------------------------------
 # attack rate per wave table
@@ -700,6 +700,12 @@ ifr_tbl_optimistic_waves <- ifr_by_waves_func(provs_optimistic)
 ifr_tbl_waves <- left_join(ifr_tbl_central_waves,
                            rename(ifr_tbl_worst_waves, max = med)) %>%
   left_join(rename(ifr_tbl_optimistic_waves, min = med))
+for(i in seq_along(ifr_tbl_waves$Province)){
+  vals <- ifr_tbl_waves[i,c(1,4,5)]
+  ifr_tbl_waves$min[i] <- min(vals)
+  ifr_tbl_waves$max[i] <- max(vals)
+  ifr_tbl_waves$med[i] <- median(as.numeric(vals))
+  }
 ifr_tbl_waves <- ifr_tbl_waves %>%
   group_by(Province, wave) %>%
   mutate(ifr = paste0(
@@ -719,7 +725,12 @@ reinfections_by_province <- function(prov) {
 
   do.call(rbind, lapply(prov, function(x){
 
-out <- nimue_format(x, c("S","infections"), date_0 = max(x$pmcmc_results$inputs$data$date))
+#out <- nimue_format(x, c("S","infections"), date_0 = max(x$pmcmc_results$inputs$data$date))
+
+out <- nimue::format(x, "S", "infections", date_0 = max(x$pmcmc_results$inputs$data$date)) %>%
+  filter(compartment %in% c("S", "infections")) %>%
+  rename(y = value) %>%
+  select(replicate, compartment, t, y, date)
 
 reinf_dat <- out %>% pivot_wider(names_from = compartment, values_from = y) %>%
   mutate(infections = replace_na(infections, 0)) %>%
@@ -748,6 +759,21 @@ reinfections_dat <- left_join(
   reinfections_central,
   rename(reinfections_low, min_reinfs = med_reinfs, min_prop = med_prop, min_infs = med_infs)) %>%
   left_join(rename(reinfections_worst, max_reinfs = med_reinfs, max_prop = med_prop, max_infs = med_infs))
+
+for(i in seq_along(reinfections_dat$date)){
+  vals <- reinfections_dat[i,c("med_reinfs","min_reinfs","max_reinfs")]
+  reinfections_dat$min_reinfs[i] <- min(vals)
+  reinfections_dat$max_reinfs[i] <- max(vals)
+  reinfections_dat$med_reinfs[i] <- median(as.numeric(vals))
+  vals <- reinfections_dat[i,c("med_infs","min_infs","max_infs")]
+  reinfections_dat$min_infs[i] <- min(vals)
+  reinfections_dat$max_infs[i] <- max(vals)
+  reinfections_dat$med_infs[i] <- median(as.numeric(vals))
+  vals <- reinfections_dat[i,c("med_prop","min_prop","max_prop")]
+  reinfections_dat$min_prop[i] <- min(vals)
+  reinfections_dat$max_prop[i] <- max(vals)
+  reinfections_dat$med_prop[i] <- median(as.numeric(vals))
+}
 
 reinfections_province_gg <- reinfections_dat %>%
   ggplot(aes(date, med_prop, ymin = min_prop, ymax = max_prop)) +
@@ -1004,10 +1030,10 @@ final_attack_by_age_comp_gg <- infs_final  %>%
   ggpubr::theme_pubclean(base_size = 14) +
   theme(axis.line = element_line(),
         axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.grid.major.x = element_blank()) +
+        panel.grid.major.x = element_blank(), legend.key = element_rect(fill = "white")) +
   ylab("National Attack Rate") +
   xlab("Age Group") +
-  scale_color_manual(values = c("red", "black"), labels = c("O'Driscoll et al.", "Brazeau et al.")) +
+  scale_color_manual(values = c("red", "black"), labels = c("O'Driscoll et al.", "Brazeau et al."), name = "IFR Source:") +
   scale_y_continuous(labels = scales::percent)
 save_figs("final_attack_by_age_ifr_comp", final_attack_by_age_comp_gg, width = 6, height = 4)
 

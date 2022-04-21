@@ -1,7 +1,7 @@
 Package: iranascertainment
 Type: Package
 Title: Analysis of COVID-19 mortality in Iran
-Version: 0.1.1
+Version: 0.1.2
 Authors@R: c(
   person("OJ", "Watson", email = "o.watson15@imperial.ac.uk", role = c("aut", "cre"))
   )
@@ -15,7 +15,9 @@ Imports:
     dplyr,
     here,
     pbapply,
-    squire (>= 0.4.34),
+    squire (== 0.6.10),
+    odin (== 1.3.1),
+    nimue,
     countrycode,
     scales,
     lubridate,
@@ -24,7 +26,6 @@ Imports:
     gbm,
     dismo,
     tidyr,
-    conflicted,
     gtools,
     stringi,
     knitr,
@@ -38,8 +39,18 @@ Imports:
     cowplot,
     RhpcBLASctl,
     grDevices,
-    grImport
+    grImport,
+    tidyverse, 
+    readxl, 
+    ConvCalendar, 
+    janitor, 
+    broom, 
+    glue, 
+    ciTools, 
+    survey
 Remotes:
-    mrc-ide/squire
-    mrc-ide/odin
+    mrc-ide/squire,
+    mrc-ide/odin,
+    mrc-ide/nimue@8c829a,
+    cran/ConvCalendar
 RoxygenNote: 7.1.2

@@ -104,3 +104,4 @@ df$page <- 2
 df$province <- "Iran"
 res_all <- rbind(res_all, df)
 saveRDS(res_all, file.path(here::here(), "analysis/data/derived/hospitalisations.rds"))
+write.csv(res_all, file.path(here::here(), "analysis/data/derived/daily_hospital_admissions.csv"))

@@ -237,133 +237,59 @@ make_fitting_pdf(grp_central)
 make_fitting_pdf(grp_worst)
 
 ## ------------------------------
-## 6. Update pars_init to rerun
+## 6. Make pdfs based on archived runs
 ## ------------------------------
 
+make_fitting_pdf <- function(reps) {
 
+  # get the filepaths for these
+  pdfs <- file.path("archive/prov_fit", reps$report_version, "fitting.pdf")
 
-
-
-## ------------------------------
-## 7. Check individual fits/diagositcs etc
-## ------------------------------
-
-fetch_res <- function(grp, i) {
-
-res <- readRDS(vapply(gsub("raw", "derived", grp$X[i]), function(x) {
-  td <- tempdir()
-  zip::unzip(
-    zipfile = x,
-    files = file.path(gsub("\\.zip", "", basename(x)), "pack/res.rds"),
-    exdir = td
+  if(reps$odriscoll[1] == "false") {
+  nm <- paste0("fitting_vacc_orderly_bundles_derived_vaccine_complete_",  tolower(reps$scenario[1]))
+  } else {
+    nm <- paste0("fitting_vacc_orderly_bundles_derived_vaccine_new_odriscoll_",  tolower(reps$scenario[1]))
+  }
+  # combine the files that are larger than 0b. Ob files are for countries that have
+  # no COVID-19 deaths to date and as such don't have a fitting.pdf but this file is
+  # created because it needs to be for orderly to finish the task
+  qpdf::pdf_combine(
+    input = pdfs[file.size(pdfs) > 0],
+    output = cp_path(paste0("analysis/plots/",nm,".pdf"))
   )
-  grep(paste0(gsub(".zip", "", basename(x),fixed = TRUE),".*res.rds$"),
-       list.files(td, full.names = TRUE, recursive = TRUE),
-       value = TRUE)
-}, character(1)))
 
-return(res)
 }
 
-plot(res$pmcmc_results$results$log_posterior[seq(1, 50000, 100)])
+# Group our model fits by their assumptions
+library(tidyverse)
+reports_all <- function(task = "prov_fit") {
 
-res$pmcmc_results$chains$chain1$results[1,]
+  wd <- here::here()
+  wdold <- getwd()
+  setwd(wd)
+  db <- orderly::orderly_db("destination")
+  if (is.null(date)) {
+    date <- as.character(Sys.Date())
+  }
 
-pars <- res$pmcmc_results$chains$chain1$results[1,]
-pars$start_date <- squire:::offset_to_start_date(res$pmcmc_results$inputs$data$date[1],start_date = pars$start_date)
-source("src/prov_fit/R/spline_fit.R")
-source("src/prov_fit/R/vaccine.R")
-source("src/prov_fit/R/plotting.R")
-ll <- iran_log_likelihood(pars = pars,
-                    data = res$pmcmc_results$inputs$data,
-                    squire_model = res$pmcmc_results$inputs$squire_model,
-                    model_params = res$pmcmc_results$inputs$model_params,
-                    pars_obs = res$pmcmc_results$inputs$pars_obs,
-                    n_particles = 2, forecast_days = 0, return = "ll",
-                    Rt_args = res$pmcmc_results$inputs$Rt_args,
-                    interventions = res$pmcmc_results$inputs$interventions)
-ll$log_likelihood
-ll$sample_state
+  # get parameters
+  pars <- DBI::dbGetQuery(db, 'select * from parameters')
+  reports <- DBI::dbGetQuery(db, 'select * from report_version')
+  reports <- reports %>% filter(report == task)
+  pars <- pars %>% filter(report_version %in% reports$id)
+  pars <- pars %>% select(-c("type","id")) %>%
+    pivot_wider(names_from = "name", values_from = "value")
 
-## generate draws
-out <- generate_draws(res, draws = 5, burnin = 1000, parallel = FALSE)
-plot(out, "ICU_occupancy", date_0 = "2021-09-03", x_var = "date")
+  setwd(wdold)
+  return(pars)
+}
 
-deaths <- squire::format_output(out, "deaths", date_0 = "2021-05-01")
-deaths$y <- deaths$y*7
-deaths_gg <- deaths %>% group_by(date) %>%
-  summarise(ymin = quantile(y, 0.025, na.rm=TRUE),
-            ymax = quantile(y, 0.975, na.rm=TRUE),
-            y = median(y, na.rm=TRUE)) %>%
-ggplot(aes(date, y*(100000/sum(out$parameters$population)),
-           ymin = ymin*(100000/sum(out$parameters$population)),
-           ymax = ymax*(100000/sum(out$parameters$population)))) +
-  geom_ribbon(alpha = 0.5) +
-  geom_line() +
-  geom_point(aes(date, deaths*(100000/sum(out$parameters$population))),
-             data = out$pmcmc_results$inputs$data, inherit.aes = FALSE) +
-  theme_bw() +
-  ylab("Weekly Deaths / 100,000") +
-  xlab("Date") + ggtitle("Hormozgan")
+# Create the list of run model fit reports
+reports_here <- reports_all()
+reports_here$scenario <- "Central"
+reports_here$scenario[reports_here$dur_R == "222"] <- "Optimistic"
+reports_here$scenario[reports_here$dur_R == "70"] <- "Worst"
+reports_here$odriscoll[is.na(reports_here$odriscoll)] <- "false"
+reports_l <- split(reports_here, list(reports_here$scenario,reports_here$odriscoll))
 
-
-deaths_age <- squire::format_output(out, "D", reduce_age = FALSE, date_0 = "2021-05-01")
-deaths_age %>% filter(date == "2021-05-01") %>%
-  group_by(age_group) %>%
-  summarise(deaths = median(y)) %>%
-  mutate(deaths_per_cap = deaths * (100000/out$parameters$population)) %>%
-  mutate(ages = (squire::population$age_group[1:17])) %>%
-  ggplot(aes(ages, deaths_per_cap)) +
-  geom_point() +
-  theme_bw() +
-  xlab("Age Group") +
-  ylab("Deaths / 100,000") +
-  scale_y_log10()
-
-S <- squire::format_output(out, "S", reduce_age = FALSE, date_0 = "2021-05-01")
-infs <- squire::format_output(out, "infections", reduce_age = FALSE, date_0 = "2021-05-01")
-left_join(
-  S %>% group_by(age_group, replicate) %>%
-  summarise(s_max = max(y,na.rm= TRUE)),
-  infs %>% group_by(age_group, replicate) %>%
-    summarise(infs = sum(y,na.rm= TRUE))
-) %>%
-  mutate(ar = infs/s_max) %>%
-  group_by(age_group) %>%
-  summarise(ar_min = quantile(ar, 0.025),
-            ar_med = median(ar),
-            ar_max = quantile(ar, 0.975)) %>%
-  mutate(ages = (squire::population$age_group[1:17])) %>%
-  ggplot(aes(ages, ar_med, ymin = ar_min, ymax = ar_max )) +
-  geom_pointrange() +
-  theme_bw() +
-  ylab("Attack Rate") +
-  xlab("Ages")
-
-
-S <- squire::format_output(out, "S", date_0 = "2021-05-01")
-infs <- squire::format_output(out, "infections", date_0 = "2021-05-01")
-left_join(
-  S %>% group_by(replicate) %>%
-    summarise(s_max = max(y,na.rm= TRUE)),
-  infs %>% group_by(replicate) %>%
-    summarise(infs = sum(y,na.rm= TRUE))
-) %>%
-  mutate(ar = infs/s_max) %>%
-  summarise(ar_min = quantile(ar, 0.025),
-            ar_med = median(ar),
-            ar_max = quantile(ar, 0.975)) %>%
-  mutate(ages = "All") %>%
-  ggplot(aes(ages, ar_med, ymin = ar_min, ymax = ar_max )) +
-  geom_pointrange() +
-  theme_bw() +
-  ylab("Attack Rate")
-
-
-
-
-
-(max(nimue::format(out, "D")$value, na.rm=TRUE) / diff(range(nimue::format(out, "S")$value, na.rm=TRUE)))*100
-
-plot(out, "ICU_occupancy", x_var = "date", date_0 = "2021-05-01")+ ylab("ICU Occupancy") + xlab("Date") +
-  theme(legend.position = "none")
+pdf_outs <- lapply(reports_l, make_fitting_pdf)
