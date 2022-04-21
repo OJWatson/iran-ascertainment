@@ -4,6 +4,7 @@
 [![minimal R
 version](https://img.shields.io/badge/R%3E%3D-4.1.3-brightgreen.svg)](https://cran.r-project.org/)
 [![Licence](https://img.shields.io/github/license/mashape/apistatus.svg)](http://choosealicense.com/licenses/mit/)
+[![DOI](https://zenodo.org/badge/415060281.svg)](https://zenodo.org/badge/latestdoi/415060281)
 
 ## Research compendium for COVID-19 analysis in Iran
 
@@ -37,7 +38,7 @@ The structure within analysis is as follows:
 
 ### Compendium DOI:
 
-<http://dx.doi.org/xxxxxxx>
+<https://doi.org/10.5281/zenodo.6475585>
 
 The files at the URL above will generate the results as found in the
 publication.
@@ -67,10 +68,6 @@ In addition we use `renv` to track package dependencies for
 reproducibility. Please use `renv::restore` to restore the state of the
 project and see <https://rstudio.github.io/renv/articles/renv.html> for
 more information.
-
-This has the advantage of allowing `devtools::install_dev_deps()` to
-install the required R packages needed to run the code in this
-repository
 
 ### Licenses
 
