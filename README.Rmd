@@ -22,7 +22,7 @@ This is a working R compendium (think R package but for reproducible analysis). 
 ### Installation
 
 ```
-git clone https://github.com/mrc-ide/iran-ascertainment.git
+git clone https://github.com/OJWatson/iran-ascertainment.git
 cd iran-rascertainment
 open iran-rascertainment.Rproj
 devtools::install_deps()
@@ -35,16 +35,16 @@ The structure within analysis is as follows:
 ```
 analysis/
     |
-    ├── 01_xxxxx /           # analysis scripts used for generating figures
+    ├── xxxxx /             # analysis scripts used for generating figures
     |
-    ├── figures/              # location of figures produced by the analysis scripts
+    ├── plots/              # location of figures produced by the analysis scripts
     |
     ├── data/
     │   ├── DO-NOT-EDIT-ANY-FILES-IN-HERE-BY-HAND
     │   ├── raw_data/       # data obtained from elsewhere
     │   └── derived_data/   # data generated during the analysis
     |
-    ├── src/                # orderly files
+    ├── tables/             # location of tables produced by the analysis scripts
 ```
 
 ### Compendium DOI: 
@@ -63,7 +63,11 @@ To download the package source as you see it on GitHub, for offline browsing, us
 git clone https://github.com/OJWatson/iran-ascertainment.git
 ```
 
-Once the download is complete, open the `iran-ascertainment.Rproj` in RStudio to begin working with the package and compendium files. We will endeavour to keep all package dependencies required listed in the DESCRIPTION. This has the advantage of allowing `devtools::install_dev_deps()` to install the required R packages needed to run the code in this repository
+Once the download is complete, open the `iran-ascertainment.Rproj` in RStudio to begin working with the package and compendium files. We will endeavour to keep all package dependencies required listed in the DESCRIPTION. 
+
+In addition we use `renv` to track package dependencies for reproducibility. Please use `renv::restore` to restore the state of the project and see https://rstudio.github.io/renv/articles/renv.html for more information.
+
+This has the advantage of allowing `devtools::install_dev_deps()` to install the required R packages needed to run the code in this repository
 
 ### Licenses
 

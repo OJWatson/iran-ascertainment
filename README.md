@@ -2,7 +2,7 @@
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
 [![minimal R
-version](https://img.shields.io/badge/R%3E%3D-4.1.1-brightgreen.svg)](https://cran.r-project.org/)
+version](https://img.shields.io/badge/R%3E%3D-4.1.3-brightgreen.svg)](https://cran.r-project.org/)
 [![Licence](https://img.shields.io/github/license/mashape/apistatus.svg)](http://choosealicense.com/licenses/mit/)
 
 ## Research compendium for COVID-19 analysis in Iran
@@ -24,16 +24,16 @@ The structure within analysis is as follows:
 
     analysis/
         |
-        ├── 01_xxxxx /           # analysis scripts used for generating figures
+        ├── xxxxx /             # analysis scripts used for generating figures
         |
-        ├── figures/              # location of figures produced by the analysis scripts
+        ├── plots/              # location of figures produced by the analysis scripts
         |
         ├── data/
         │   ├── DO-NOT-EDIT-ANY-FILES-IN-HERE-BY-HAND
         │   ├── raw_data/       # data obtained from elsewhere
         │   └── derived_data/   # data generated during the analysis
         |
-        ├── src/                # orderly files
+        ├── tables/             # location of tables produced by the analysis scripts
 
 ### Compendium DOI:
 
@@ -61,13 +61,20 @@ git clone https://github.com/OJWatson/iran-ascertainment.git
 Once the download is complete, open the `iran-ascertainment.Rproj` in
 RStudio to begin working with the package and compendium files. We will
 endeavour to keep all package dependencies required listed in the
-DESCRIPTION. This has the advantage of allowing
-`devtools::install_dev_deps()` to install the required R packages needed
-to run the code in this repository
+DESCRIPTION.
+
+In addition we use `renv` to track package dependencies for
+reproducibility. Please use `renv::restore` to restore the state of the
+project and see <https://rstudio.github.io/renv/articles/renv.html> for
+more information.
+
+This has the advantage of allowing `devtools::install_dev_deps()` to
+install the required R packages needed to run the code in this
+repository
 
 ### Licenses
 
-Code: [MIT](http://opensource.org/licenses/MIT) year: 2021, copyright
+Code: [MIT](http://opensource.org/licenses/MIT) year: 2022, copyright
 holder: OJ Watson
 
 Data: [CC-0](http://creativecommons.org/publicdomain/zero/1.0/)
